@@ -26,7 +26,10 @@ export default function SalesList() {
   });
 
   const { data: orders, isLoading } = useSalesOrders(
-    Object.fromEntries(Object.entries(filters).filter(([_, v]) => v))
+    Object.fromEntries(
+      Object.entries(filters)
+        .filter(([_, v]) => v && v !== "all")
+    )
   );
 
   const columns = [
@@ -89,14 +92,14 @@ export default function SalesList() {
           className="w-40"
         />
         <Select
-          value={filters.marketplace}
-          onValueChange={(v) => setFilters((f) => ({ ...f, marketplace: v }))}
+          value={filters.marketplace || "all"}
+          onValueChange={(v) => setFilters((f) => ({ ...f, marketplace: v === "all" ? "" : v }))}
         >
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Marketplace" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="Shopee">Shopee</SelectItem>
             <SelectItem value="Tokopedia">Tokopedia</SelectItem>
             <SelectItem value="Lazada">Lazada</SelectItem>
@@ -104,14 +107,14 @@ export default function SalesList() {
           </SelectContent>
         </Select>
         <Select
-          value={filters.status}
-          onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+          value={filters.status || "all"}
+          onValueChange={(v) => setFilters((f) => ({ ...f, status: v === "all" ? "" : v }))}
         >
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
