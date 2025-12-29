@@ -1,0 +1,99 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  getChartOfAccounts, getAccount, createAccount,
+  getJournalEntries, getJournalEntry, createJournalEntry,
+  getTrialBalance, getIncomeStatement, getBalanceSheet
+} from '@/lib/api/accounting';
+import type { ChartOfAccount } from '@/types';
+import { toast } from 'sonner';
+
+// Chart of Accounts
+export function useChartOfAccounts() {
+  return useQuery({
+    queryKey: ['chart-of-accounts'],
+    queryFn: getChartOfAccounts,
+  });
+}
+
+export function useAccount(id: string) {
+  return useQuery({
+    queryKey: ['chart-of-accounts', id],
+    queryFn: () => getAccount(id),
+    enabled: !!id,
+  });
+}
+
+export function useCreateAccount() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createAccount,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast.success('Account created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create account: ${error.message}`);
+    },
+  });
+}
+
+// Journal Entries
+export function useJournalEntries(filters?: {
+  startDate?: string;
+  endDate?: string;
+  referenceType?: string;
+}) {
+  return useQuery({
+    queryKey: ['journal-entries', filters],
+    queryFn: () => getJournalEntries(filters),
+  });
+}
+
+export function useJournalEntry(id: string) {
+  return useQuery({
+    queryKey: ['journal-entries', id],
+    queryFn: () => getJournalEntry(id),
+    enabled: !!id,
+  });
+}
+
+export function useCreateJournalEntry() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createJournalEntry,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
+      toast.success('Journal entry created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create journal entry: ${error.message}`);
+    },
+  });
+}
+
+// Reports
+export function useTrialBalance(startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ['trial-balance', startDate, endDate],
+    queryFn: () => getTrialBalance(startDate, endDate),
+  });
+}
+
+export function useIncomeStatement(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['income-statement', startDate, endDate],
+    queryFn: () => getIncomeStatement(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useBalanceSheet(asOfDate: string) {
+  return useQuery({
+    queryKey: ['balance-sheet', asOfDate],
+    queryFn: () => getBalanceSheet(asOfDate),
+    enabled: !!asOfDate,
+  });
+}
