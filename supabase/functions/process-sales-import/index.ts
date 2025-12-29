@@ -135,8 +135,9 @@ serve(async (req) => {
     const skuToVariant = new Map<string, any>();
     for (const v of variants || []) {
       skuToVariant.set(v.sku_variant.toLowerCase(), v);
-      if (v.products?.sku_master) {
-        skuToVariant.set(v.products.sku_master.toLowerCase(), v);
+      const product = v.products as unknown as { sku_master: string; name: string } | null;
+      if (product?.sku_master) {
+        skuToVariant.set(product.sku_master.toLowerCase(), v);
       }
     }
 
@@ -338,7 +339,8 @@ serve(async (req) => {
 
       } catch (err) {
         console.error(`❌ Error processing order ${orderNo}:`, err);
-        skippedDetails.push({ orderNo, sku: '-', reason: `Error: ${err.message}` });
+        const errMsg = err instanceof Error ? err.message : 'Unknown error';
+        skippedDetails.push({ orderNo, sku: '-', reason: `Error: ${errMsg}` });
         skippedCount++;
       }
     }
@@ -375,8 +377,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Error in process-sales-import:', error);
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: errMsg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
