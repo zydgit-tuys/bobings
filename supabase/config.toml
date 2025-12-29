@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.process-sales-import]
 verify_jwt = false
+
+[functions.calculate-optimal-stock]
+verify_jwt = false
+
+[functions.apply-optimal-stock]
+verify_jwt = false
+
+[functions.run-tests]
+verify_jwt = false
