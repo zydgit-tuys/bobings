@@ -10,7 +10,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useParseDestyFile, useProcessSalesImport } from "@/hooks/use-sales";
-import type { DestyRow } from "@/types";
+import type { DestyRow, ParseResult } from "@/types";
 
 interface SalesImportDialogProps {
   open: boolean;
@@ -31,8 +31,8 @@ export function SalesImportDialog({ open, onOpenChange }: SalesImportDialogProps
 
     setFile(selectedFile);
     parseFile.mutate(selectedFile, {
-      onSuccess: (data) => {
-        setParsedData(data);
+      onSuccess: (result: ParseResult) => {
+        setParsedData(result.data ?? []);
         setStep("preview");
       },
     });
@@ -110,7 +110,7 @@ export function SalesImportDialog({ open, onOpenChange }: SalesImportDialogProps
                   <div key={i} className="text-sm flex justify-between">
                     <span>{row.orderNo}</span>
                     <span className="text-muted-foreground">{row.marketplace}</span>
-                    <span>Rp {row.amount?.toLocaleString() ?? 0}</span>
+                    <span>Rp {row.subtotal?.toLocaleString() ?? 0}</span>
                   </div>
                 ))}
                 {parsedData.length > 10 && (
