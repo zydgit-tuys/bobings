@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { MobileCardList } from "@/components/shared/MobileCardList";
 import { useProducts, useDeleteProduct } from "@/hooks/use-products";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function ProductList() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { data: products, isLoading } = useProducts();
   const deleteProduct = useDeleteProduct();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -66,6 +69,25 @@ export default function ProductList() {
     },
   ];
 
+  const renderProductCard = (product: any) => (
+    <div className="p-4">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <p className="font-medium text-foreground">{product.name}</p>
+          <p className="text-sm text-muted-foreground">{product.sku_master}</p>
+        </div>
+        <span className="text-sm font-medium text-primary">
+          Rp {product.base_price.toLocaleString()}
+        </span>
+      </div>
+      <div className="flex gap-4 text-sm text-muted-foreground">
+        <span>{product.brands?.name ?? "-"}</span>
+        <span>{product.categories?.name ?? "-"}</span>
+        <span>{product.product_variants?.length ?? 0} variants</span>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
@@ -80,13 +102,38 @@ export default function ProductList() {
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={products ?? []}
-        isLoading={isLoading}
-        emptyMessage="No products found. Add your first product."
-        onRowClick={(item) => navigate(`/products/${item.id}`)}
-      />
+      {isMobile ? (
+        <MobileCardList
+          data={products ?? []}
+          isLoading={isLoading}
+          emptyMessage="No products found. Add your first product."
+          renderCard={renderProductCard}
+          onCardClick={(item) => navigate(`/products/${item.id}`)}
+          leftActions={[
+            {
+              icon: <Pencil className="h-5 w-5" />,
+              label: "Edit",
+              onClick: (item) => navigate(`/products/${item.id}`),
+            },
+          ]}
+          rightActions={[
+            {
+              icon: <Trash2 className="h-5 w-5" />,
+              label: "Delete",
+              onClick: (item) => setDeleteId(item.id),
+              variant: "destructive",
+            },
+          ]}
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={products ?? []}
+          isLoading={isLoading}
+          emptyMessage="No products found. Add your first product."
+          onRowClick={(item) => navigate(`/products/${item.id}`)}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteId}
