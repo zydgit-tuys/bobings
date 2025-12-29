@@ -1,0 +1,254 @@
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { ArrowLeft, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import {
+  useProduct,
+  useCreateProduct,
+  useUpdateProduct,
+  useBrands,
+  useCategories,
+} from "@/hooks/use-products";
+import { ProductVariants } from "./ProductVariants";
+
+const productSchema = z.object({
+  sku_master: z.string().min(1, "SKU is required"),
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  base_price: z.coerce.number().min(0, "Price must be positive"),
+  brand_id: z.string().optional(),
+  category_id: z.string().optional(),
+});
+
+type ProductFormData = z.infer<typeof productSchema>;
+
+export default function ProductForm() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const isEdit = id && id !== "new";
+
+  const { data: product, isLoading } = useProduct(isEdit ? id : "");
+  const { data: brands } = useBrands();
+  const { data: categories } = useCategories();
+  const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      sku_master: "",
+      name: "",
+      description: "",
+      base_price: 0,
+      brand_id: "",
+      category_id: "",
+    },
+  });
+
+  useEffect(() => {
+    if (product) {
+      form.reset({
+        sku_master: product.sku_master,
+        name: product.name,
+        description: product.description ?? "",
+        base_price: product.base_price,
+        brand_id: product.brand_id ?? "",
+        category_id: product.category_id ?? "",
+      });
+    }
+  }, [product, form]);
+
+  const onSubmit = (data: ProductFormData) => {
+    if (isEdit) {
+      updateProduct.mutate(
+        { id, data: { ...data, brand_id: data.brand_id || null, category_id: data.category_id || null } },
+        { onSuccess: () => navigate("/products") }
+      );
+    } else {
+      createProduct.mutate({
+        sku_master: data.sku_master,
+        name: data.name,
+        description: data.description,
+        base_price: data.base_price,
+        brand_id: data.brand_id || null,
+        category_id: data.category_id || null,
+        is_active: true,
+      }, { onSuccess: () => navigate("/products") });
+    }
+  };
+
+  if (isEdit && isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title={isEdit ? "Edit Product" : "New Product"}
+        action={
+          <Button variant="outline" onClick={() => navigate("/products")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="sku_master"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SKU Master</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., PROD-001" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Enter product name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} placeholder="Product description" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="base_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Base Price (Rp)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" min={0} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="brand_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Brand</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select brand" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {brands?.map((brand) => (
+                            <SelectItem key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {categories?.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button
+                  type="submit"
+                  disabled={createProduct.isPending || updateProduct.isPending}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {isEdit ? "Update Product" : "Create Product"}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+
+        {isEdit && <ProductVariants productId={id} />}
+      </div>
+    </div>
+  );
+}
