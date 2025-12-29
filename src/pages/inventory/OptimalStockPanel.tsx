@@ -19,7 +19,7 @@ export function OptimalStockPanel() {
 
   const handleCalculate = () => {
     calculate.mutate({
-      analysis_window_days: analysisWindow,
+      days_to_analyze: analysisWindow,
       safety_factor: safetyFactor,
     });
   };

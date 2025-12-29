@@ -63,7 +63,12 @@ export function ChartOfAccounts() {
   });
 
   const onSubmit = (data: AccountFormData) => {
-    createAccount.mutate({ ...data, is_active: true }, {
+    createAccount.mutate({
+      code: data.code,
+      name: data.name,
+      account_type: data.account_type,
+      is_active: true,
+    }, {
       onSuccess: () => { setOpen(false); form.reset(); },
     });
   };

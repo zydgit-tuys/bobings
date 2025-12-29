@@ -65,7 +65,15 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
       );
     } else {
       createVariant.mutate(
-        { ...data, product_id: productId, is_active: true },
+        {
+          sku_variant: data.sku_variant,
+          price: data.price,
+          hpp: data.hpp,
+          stock_qty: data.stock_qty,
+          min_stock_alert: data.min_stock_alert,
+          product_id: productId,
+          is_active: true,
+        },
         { onSuccess: () => { setOpen(false); form.reset(); } }
       );
     }
