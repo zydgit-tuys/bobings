@@ -12,12 +12,23 @@ interface DestyRow {
   orderDate: string;
   customerName: string;
   sku: string;
+  skuVariant: string;
   productName: string;
+  variant: string;
   qty: number;
   unitPrice: number;
+  paidPrice: number;
   subtotal: number;
+  orderSubtotal: number;
+  sellerDiscount: number;
+  invoiceTotal: number;
   shippingFee: number;
   adminFee: number;
+  tax: number;
+  totalSales: number;
+  settlement: number;
+  hpp: number;
+  profit: number;
   status: string;
 }
 
@@ -198,8 +209,9 @@ serve(async (req) => {
           }
 
           validItems.push({ row: item, variant });
-          totalAmount += item.subtotal || (item.unitPrice * item.qty);
-          totalHpp += variant.hpp * item.qty;
+          totalAmount += item.subtotal || (item.paidPrice * item.qty) || (item.unitPrice * item.qty);
+          // Use HPP from Excel if available, otherwise use variant hpp
+          totalHpp += item.hpp > 0 ? item.hpp : (variant.hpp * item.qty);
         }
 
         if (hasInvalidSku) {
@@ -207,8 +219,8 @@ serve(async (req) => {
           continue;
         }
 
-        // Create sales order
-        const profit = totalAmount - totalHpp - totalFees;
+        // Create sales order - use profit from Excel if available
+        const profit = firstItem.profit > 0 ? firstItem.profit : (totalAmount - totalHpp - totalFees);
         
         const { data: salesOrder, error: orderError } = await supabase
           .from('sales_orders')
@@ -237,16 +249,17 @@ serve(async (req) => {
         // Create order items and stock movements
         for (const { row, variant } of validItems) {
           // Create order item
+          const itemHpp = row.hpp > 0 ? row.hpp : variant.hpp;
           await supabase.from('order_items').insert({
             order_id: salesOrder.id,
             variant_id: variant.id,
             sku_master: variant.products?.sku_master || row.sku,
-            sku_variant: variant.sku_variant,
+            sku_variant: row.skuVariant || variant.sku_variant,
             product_name: row.productName || variant.products?.name,
             qty: row.qty,
-            unit_price: row.unitPrice,
-            hpp: variant.hpp,
-            subtotal: row.subtotal || (row.unitPrice * row.qty),
+            unit_price: row.paidPrice || row.unitPrice,
+            hpp: itemHpp,
+            subtotal: row.subtotal || (row.paidPrice * row.qty) || (row.unitPrice * row.qty),
           });
 
           // Create stock movement (will trigger stock update)
