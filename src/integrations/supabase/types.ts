@@ -402,6 +402,110 @@ export type Database = {
           },
         ]
       }
+      purchase_order_lines: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          purchase_id: string
+          qty_ordered: number
+          qty_received: number
+          subtotal: number
+          unit_cost: number
+          variant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          purchase_id: string
+          qty_ordered?: number
+          qty_received?: number
+          subtotal?: number
+          unit_cost?: number
+          variant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          purchase_id?: string
+          qty_ordered?: number
+          qty_received?: number
+          subtotal?: number
+          unit_cost?: number
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_lines_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchases: {
+        Row: {
+          created_at: string
+          expected_date: string | null
+          id: string
+          notes: string | null
+          order_date: string
+          purchase_no: string
+          received_date: string | null
+          status: Database["public"]["Enums"]["purchase_status"]
+          supplier_id: string
+          total_amount: number
+          total_qty: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expected_date?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string
+          purchase_no: string
+          received_date?: string | null
+          status?: Database["public"]["Enums"]["purchase_status"]
+          supplier_id: string
+          total_amount?: number
+          total_qty?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expected_date?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string
+          purchase_no?: string
+          received_date?: string | null
+          status?: Database["public"]["Enums"]["purchase_status"]
+          supplier_id?: string
+          total_amount?: number
+          total_qty?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales_imports: {
         Row: {
           created_at: string
@@ -538,6 +642,51 @@ export type Database = {
           },
         ]
       }
+      suppliers: {
+        Row: {
+          address: string | null
+          city: string | null
+          code: string
+          contact_person: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          code: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          code?: string
+          contact_person?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       variant_attributes: {
         Row: {
           created_at: string
@@ -595,6 +744,12 @@ export type Database = {
       import_status: "pending" | "processing" | "completed" | "failed"
       movement_type: "IN" | "OUT" | "ADJUSTMENT" | "RETURN" | "SALE"
       order_status: "pending" | "completed" | "cancelled" | "returned"
+      purchase_status:
+        | "draft"
+        | "ordered"
+        | "partial"
+        | "received"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -726,6 +881,7 @@ export const Constants = {
       import_status: ["pending", "processing", "completed", "failed"],
       movement_type: ["IN", "OUT", "ADJUSTMENT", "RETURN", "SALE"],
       order_status: ["pending", "completed", "cancelled", "returned"],
+      purchase_status: ["draft", "ordered", "partial", "received", "cancelled"],
     },
   },
 } as const
