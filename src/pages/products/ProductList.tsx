@@ -72,9 +72,10 @@ export default function ProductList() {
         title="Products"
         description="Manage your product catalog"
         action={
-          <Button onClick={() => navigate("/products/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
+          <Button onClick={() => navigate("/products/new")} size="sm" className="md:size-default">
+            <Plus className="h-4 w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Add Product</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         }
       />

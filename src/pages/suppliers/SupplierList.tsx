@@ -64,9 +64,12 @@ export default function SupplierList() {
               setEditSupplier(null);
               setShowDialog(true);
             }}
+            size="sm"
+            className="md:size-default"
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Supplier
+            <Plus className="h-4 w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Add Supplier</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         }
       />

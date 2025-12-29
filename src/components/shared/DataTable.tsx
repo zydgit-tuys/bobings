@@ -141,31 +141,31 @@ export function DataTable<T extends { id: string }>({
   return (
     <div className="space-y-2">
       {showFilters && filterableColumns.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant={showFilterRow ? "secondary" : "outline"}
             size="sm"
             onClick={() => setShowFilterRow(!showFilterRow)}
-            className="gap-2"
+            className="gap-1 md:gap-2"
           >
             <Search className="h-4 w-4" />
-            Filter
+            <span className="hidden sm:inline">Filter</span>
           </Button>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
               <X className="h-4 w-4" />
-              Clear
+              <span className="hidden sm:inline">Clear</span>
             </Button>
           )}
           {hasActiveFilters && (
-            <span className="text-sm text-muted-foreground">
-              {sortedData.length} of {data.length} items
+            <span className="text-xs md:text-sm text-muted-foreground">
+              {sortedData.length}/{data.length}
             </span>
           )}
         </div>
       )}
 
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             {showFilterRow && showFilters && (
