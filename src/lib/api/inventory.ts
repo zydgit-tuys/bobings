@@ -139,3 +139,85 @@ export async function getInventoryValuation() {
     },
   };
 }
+
+// ============================================
+// OPTIMAL STOCK CALCULATION API
+// ============================================
+
+export interface OptimalStockParams {
+  days_to_analyze?: number;
+  safety_factor?: number;
+  default_lead_time?: number;
+  variant_ids?: string[];
+}
+
+export interface OptimalStockResult {
+  variant_id: string;
+  sku_variant: string;
+  product_name: string;
+  current_stock: number;
+  current_min_stock: number;
+  avg_daily_sales: number;
+  lead_time_days: number;
+  safety_stock: number;
+  reorder_point: number;
+  optimal_min_stock: number;
+  recommendation: string;
+}
+
+export interface OptimalStockResponse {
+  success: boolean;
+  params: {
+    days_analyzed: number;
+    safety_factor: number;
+    default_lead_time: number;
+  };
+  summary: {
+    total_variants: number;
+    variants_with_sales: number;
+    need_increase: number;
+    need_decrease: number;
+  };
+  results: OptimalStockResult[];
+  error?: string;
+}
+
+export async function calculateOptimalStock(params?: OptimalStockParams): Promise<OptimalStockResponse> {
+  const { data, error } = await supabase.functions.invoke('calculate-optimal-stock', {
+    body: params || {},
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+export interface ApplyStockUpdate {
+  variant_id: string;
+  new_min_stock: number;
+}
+
+export interface ApplyStockParams {
+  updates?: ApplyStockUpdate[];
+  apply_all?: boolean;
+  threshold_percent?: number;
+}
+
+export interface ApplyStockResponse {
+  success: boolean;
+  mode: 'specific' | 'auto';
+  applied: number;
+  failed?: number;
+  analyzed?: number;
+  threshold_percent?: number;
+  errors?: string[];
+  error?: string;
+}
+
+export async function applyOptimalStock(params: ApplyStockParams): Promise<ApplyStockResponse> {
+  const { data, error } = await supabase.functions.invoke('apply-optimal-stock', {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data;
+}

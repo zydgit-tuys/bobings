@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getStockMovements, createStockMovement, adjustStock,
-  getInventoryAlerts, getInventoryValuation
+  getInventoryAlerts, getInventoryValuation,
+  calculateOptimalStock, applyOptimalStock,
+  type OptimalStockParams, type ApplyStockParams
 } from '@/lib/api/inventory';
 import type { MovementType } from '@/types';
 import { toast } from 'sonner';
@@ -58,5 +60,44 @@ export function useInventoryValuation() {
   return useQuery({
     queryKey: ['inventory-valuation'],
     queryFn: getInventoryValuation,
+  });
+}
+
+// ============================================
+// OPTIMAL STOCK HOOKS
+// ============================================
+
+export function useCalculateOptimalStock(params?: OptimalStockParams) {
+  return useQuery({
+    queryKey: ['optimal-stock', params],
+    queryFn: () => calculateOptimalStock(params),
+    enabled: false, // Manual trigger only
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+export function useCalculateOptimalStockMutation() {
+  return useMutation({
+    mutationFn: calculateOptimalStock,
+    onError: (error: Error) => {
+      toast.error(`Failed to calculate optimal stock: ${error.message}`);
+    },
+  });
+}
+
+export function useApplyOptimalStock() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: ApplyStockParams) => applyOptimalStock(params),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['variants'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['optimal-stock'] });
+      toast.success(`Updated min stock for ${data.applied} variants`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to apply optimal stock: ${error.message}`);
+    },
   });
 }
