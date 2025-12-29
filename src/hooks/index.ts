@@ -10,3 +10,4 @@ export * from './use-purchases';
 export * from './use-sales';
 export * from './use-inventory';
 export * from './use-accounting';
+export * from './use-pagination';
