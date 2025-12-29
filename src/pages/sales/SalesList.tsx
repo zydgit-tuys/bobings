@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FileUp } from "lucide-react";
+import { FileUp, Eye, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,10 +13,14 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { MobileCardList } from "@/components/shared/MobileCardList";
 import { useSalesOrders } from "@/hooks/use-sales";
 import { SalesImportDialog } from "./SalesImportDialog";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { toast } from "sonner";
 
 export default function SalesList() {
+  const isMobile = useIsMobile();
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState({
     startDate: "",
@@ -61,6 +65,39 @@ export default function SalesList() {
       ),
     },
   ];
+
+  const renderOrderCard = (order: any) => (
+    <div className="p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-sm">{order.desty_order_no}</span>
+        <StatusBadge status={order.status} />
+      </div>
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>{order.marketplace}</span>
+        <span>{format(new Date(order.order_date), "dd MMM yyyy")}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground truncate max-w-[150px]">
+          {order.customer_name || "-"}
+        </span>
+        <div className="text-right">
+          <div className="text-sm font-medium">Rp {order.total_amount.toLocaleString()}</div>
+          <div className={`text-xs ${order.profit >= 0 ? "text-green-600" : "text-destructive"}`}>
+            Profit: Rp {order.profit.toLocaleString()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const handleCopyOrder = (order: any) => {
+    navigator.clipboard.writeText(order.desty_order_no);
+    toast.success("Order number copied");
+  };
+
+  const handleViewOrder = (order: any) => {
+    toast.info(`Viewing order ${order.desty_order_no}`);
+  };
 
   return (
     <div>
@@ -131,12 +168,36 @@ export default function SalesList() {
         </Button>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={orders ?? []}
-        isLoading={isLoading}
-        emptyMessage="No sales orders found."
-      />
+      {isMobile ? (
+        <MobileCardList
+          data={orders ?? []}
+          isLoading={isLoading}
+          emptyMessage="No sales orders found."
+          renderCard={renderOrderCard}
+          onCardClick={handleViewOrder}
+          leftActions={[
+            {
+              icon: <Copy className="h-5 w-5" />,
+              label: "Copy",
+              onClick: handleCopyOrder,
+            },
+          ]}
+          rightActions={[
+            {
+              icon: <Eye className="h-5 w-5" />,
+              label: "View",
+              onClick: handleViewOrder,
+            },
+          ]}
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={orders ?? []}
+          isLoading={isLoading}
+          emptyMessage="No sales orders found."
+        />
+      )}
 
       <SalesImportDialog open={showImport} onOpenChange={setShowImport} />
     </div>
