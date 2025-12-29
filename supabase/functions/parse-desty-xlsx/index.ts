@@ -12,28 +12,51 @@ interface DestyRow {
   orderDate: string;
   customerName: string;
   sku: string;
+  skuVariant: string;
   productName: string;
+  variant: string;
   qty: number;
   unitPrice: number;
+  paidPrice: number;
   subtotal: number;
+  orderSubtotal: number;
+  sellerDiscount: number;
+  invoiceTotal: number;
   shippingFee: number;
   adminFee: number;
+  tax: number;
+  totalSales: number;
+  settlement: number;
+  hpp: number;
+  profit: number;
   status: string;
 }
 
 const COLUMN_MAPPINGS: Record<string, string[]> = {
-  orderNo: ['No. Pesanan', 'Order No', 'No Pesanan', 'Order Number', 'Nomor Pesanan'],
-  marketplace: ['Marketplace', 'Channel', 'Platform', 'Toko'],
-  orderDate: ['Tanggal Pesanan', 'Order Date', 'Tanggal', 'Date', 'Waktu Pesanan Dibuat'],
-  customerName: ['Nama Pembeli', 'Customer Name', 'Nama Customer', 'Pembeli', 'Username (Pembeli)'],
-  sku: ['SKU', 'Kode SKU', 'SKU Induk', 'Nomor Referensi SKU'],
+  orderNo: ['Nomor Pesanan (di Desty)', 'Nomor Pesanan', 'No. Pesanan', 'Order No', 'No Pesanan'],
+  marketplaceOrderNo: ['Nomor Pesanan (di Marketplace)', 'Marketplace Order No'],
+  marketplace: ['Channel - Nama Toko', 'Channel', 'Marketplace', 'Platform', 'Toko'],
+  orderDate: ['Tanggal Pesanan Dibuat', 'Tanggal Pesanan', 'Order Date', 'Waktu Pesanan Dibuat'],
+  customerName: ['Nama Pembeli', 'Customer Name', 'Nama Customer', 'Pembeli'],
+  sku: ['SKU Master', 'SKU Induk', 'SKU', 'Kode SKU'],
+  skuVariant: ['SKU Marketplace', 'SKU Variant'],
   productName: ['Nama Produk', 'Product Name', 'Produk', 'Nama Barang'],
+  variant: ['Varian Produk', 'Variant', 'Variasi'],
   qty: ['Jumlah', 'Qty', 'Quantity', 'Kuantitas'],
   unitPrice: ['Harga Satuan', 'Unit Price', 'Harga', 'Harga Awal'],
-  subtotal: ['Subtotal', 'Total', 'Subtotal Pesanan', 'Total Harga Produk'],
-  shippingFee: ['Ongkir', 'Shipping Fee', 'Biaya Kirim', 'Ongkos Kirim Dibayar oleh Pembeli'],
-  adminFee: ['Biaya Admin', 'Admin Fee', 'Potongan', 'Biaya Administrasi'],
-  status: ['Status', 'Status Pesanan', 'Order Status', 'Status Terakhir'],
+  paidPrice: ['Harga Dibayar', 'Paid Price'],
+  subtotal: ['Subtotal Produk', 'Subtotal', 'Product Subtotal'],
+  orderSubtotal: ['Subtotal Pesanan', 'Order Subtotal'],
+  sellerDiscount: ['Diskon Penjual', 'Seller Discount', 'Discount'],
+  invoiceTotal: ['Total Faktur', 'Invoice Total'],
+  shippingFee: ['Biaya Pengiriman Final', 'Ongkir', 'Shipping Fee', 'Biaya Kirim'],
+  adminFee: ['Biaya Layanan', 'Biaya Admin', 'Admin Fee', 'Service Fee'],
+  tax: ['Pajak', 'Tax'],
+  totalSales: ['Total Penjualan', 'Total Sales'],
+  settlement: ['Penyelesaian Pembayaran', 'Settlement'],
+  hpp: ['HPP', 'Cost of Goods', 'Harga Pokok'],
+  profit: ['Laba Kotor', 'Gross Profit', 'Profit'],
+  status: ['Status Pesanan', 'Status', 'Order Status'],
 };
 
 function findColumnIndex(headers: string[], possibleNames: string[]): number {
@@ -145,18 +168,33 @@ serve(async (req) => {
       const qty = parseNumeric(row[columnIndexes.qty]);
       if (qty <= 0) { errors.push(`Row ${i + 1}: Invalid quantity`); continue; }
 
+      // Extract marketplace name (e.g., "shopee - Bobing Shop" -> "Shopee")
+      const rawMarketplace = row[columnIndexes.marketplace]?.toString()?.trim() || 'Unknown';
+      const marketplace = rawMarketplace.split('-')[0]?.trim() || rawMarketplace;
+
       parsedRows.push({
         orderNo,
-        marketplace: row[columnIndexes.marketplace]?.toString()?.trim() || 'Unknown',
+        marketplace,
         orderDate: parseDate(row[columnIndexes.orderDate]),
         customerName: row[columnIndexes.customerName]?.toString()?.trim() || 'Unknown',
         sku,
+        skuVariant: row[columnIndexes.skuVariant]?.toString()?.trim() || sku,
         productName: row[columnIndexes.productName]?.toString()?.trim() || sku,
+        variant: row[columnIndexes.variant]?.toString()?.trim() || '',
         qty,
         unitPrice: parseNumeric(row[columnIndexes.unitPrice]),
+        paidPrice: parseNumeric(row[columnIndexes.paidPrice]),
         subtotal: parseNumeric(row[columnIndexes.subtotal]),
+        orderSubtotal: parseNumeric(row[columnIndexes.orderSubtotal]),
+        sellerDiscount: parseNumeric(row[columnIndexes.sellerDiscount]),
+        invoiceTotal: parseNumeric(row[columnIndexes.invoiceTotal]),
         shippingFee: parseNumeric(row[columnIndexes.shippingFee]),
         adminFee: parseNumeric(row[columnIndexes.adminFee]),
+        tax: parseNumeric(row[columnIndexes.tax]),
+        totalSales: parseNumeric(row[columnIndexes.totalSales]),
+        settlement: parseNumeric(row[columnIndexes.settlement]),
+        hpp: parseNumeric(row[columnIndexes.hpp]),
+        profit: parseNumeric(row[columnIndexes.profit]),
         status: row[columnIndexes.status]?.toString()?.trim() || 'Completed',
       });
     }
