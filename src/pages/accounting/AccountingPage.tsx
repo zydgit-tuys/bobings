@@ -16,10 +16,10 @@ export default function AccountingPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
-          <TabsTrigger value="journals">Journal Entries</TabsTrigger>
-          <TabsTrigger value="trial">Trial Balance</TabsTrigger>
+        <TabsList className="mb-4 md:mb-6 flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="coa" className="text-xs md:text-sm">CoA</TabsTrigger>
+          <TabsTrigger value="journals" className="text-xs md:text-sm">Journals</TabsTrigger>
+          <TabsTrigger value="trial" className="text-xs md:text-sm">Trial Balance</TabsTrigger>
         </TabsList>
 
         <TabsContent value="coa">

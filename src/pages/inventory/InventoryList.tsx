@@ -17,11 +17,11 @@ export default function InventoryList() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="stock">Stock Levels</TabsTrigger>
-          <TabsTrigger value="alerts">Low Stock Alerts</TabsTrigger>
-          <TabsTrigger value="movements">Stock Movements</TabsTrigger>
-          <TabsTrigger value="optimal">Optimal Stock</TabsTrigger>
+        <TabsList className="mb-4 md:mb-6 flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="stock" className="text-xs md:text-sm">Stock</TabsTrigger>
+          <TabsTrigger value="alerts" className="text-xs md:text-sm">Alerts</TabsTrigger>
+          <TabsTrigger value="movements" className="text-xs md:text-sm">Movements</TabsTrigger>
+          <TabsTrigger value="optimal" className="text-xs md:text-sm">Optimal</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stock">

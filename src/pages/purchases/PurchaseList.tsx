@@ -75,9 +75,10 @@ export default function PurchaseList() {
         title="Purchase Orders"
         description="Manage your purchase orders"
         action={
-          <Button onClick={() => navigate("/purchases/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Purchase
+          <Button onClick={() => navigate("/purchases/new")} size="sm" className="md:size-default">
+            <Plus className="h-4 w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">New Purchase</span>
+            <span className="sm:hidden">New</span>
           </Button>
         }
       />

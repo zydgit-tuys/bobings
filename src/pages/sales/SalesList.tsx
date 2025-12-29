@@ -68,34 +68,35 @@ export default function SalesList() {
         title="Sales Orders"
         description="View and import sales orders"
         action={
-          <Button onClick={() => setShowImport(true)}>
-            <FileUp className="h-4 w-4 mr-2" />
-            Import Desty
+          <Button onClick={() => setShowImport(true)} size="sm" className="md:size-default">
+            <FileUp className="h-4 w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Import Desty</span>
+            <span className="sm:hidden">Import</span>
           </Button>
         }
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-2 mb-4 md:flex md:flex-wrap md:gap-4 md:mb-6">
         <Input
           type="date"
           placeholder="Start Date"
           value={filters.startDate}
           onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-          className="w-40"
+          className="w-full md:w-40"
         />
         <Input
           type="date"
           placeholder="End Date"
           value={filters.endDate}
           onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-          className="w-40"
+          className="w-full md:w-40"
         />
         <Select
           value={filters.marketplace || "all"}
           onValueChange={(v) => setFilters((f) => ({ ...f, marketplace: v === "all" ? "" : v }))}
         >
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full md:w-40">
             <SelectValue placeholder="Marketplace" />
           </SelectTrigger>
           <SelectContent>
@@ -110,7 +111,7 @@ export default function SalesList() {
           value={filters.status || "all"}
           onValueChange={(v) => setFilters((f) => ({ ...f, status: v === "all" ? "" : v }))}
         >
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full md:w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -124,6 +125,7 @@ export default function SalesList() {
         <Button
           variant="outline"
           onClick={() => setFilters({ startDate: "", endDate: "", marketplace: "", status: "" })}
+          className="col-span-2 md:col-span-1"
         >
           Clear
         </Button>

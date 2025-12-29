@@ -46,21 +46,21 @@ export function TablePagination({
   if (totalItems === 0) return null;
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-4">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-3 px-2 py-3 md:flex-row md:items-center md:justify-between md:gap-4 md:py-4">
+      <div className="flex items-center justify-center gap-2 text-xs md:text-sm text-muted-foreground">
         <span>
-          Menampilkan {startIndex + 1}-{endIndex} dari {totalItems} data
+          {startIndex + 1}-{endIndex} dari {totalItems}
         </span>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Rows per page:</span>
+      <div className="flex items-center justify-between gap-2 md:gap-4">
+        <div className="hidden sm:flex items-center gap-2">
+          <span className="text-xs md:text-sm text-muted-foreground whitespace-nowrap">Per halaman:</span>
           <Select
             value={pageSize.toString()}
             onValueChange={(value) => onPageSizeChange(parseInt(value))}
           >
-            <SelectTrigger className="h-8 w-[70px]">
+            <SelectTrigger className="h-8 w-[60px] md:w-[70px]">
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent>
@@ -73,7 +73,7 @@ export function TablePagination({
           </Select>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 mx-auto sm:mx-0">
           <Button
             variant="outline"
             size="icon"
