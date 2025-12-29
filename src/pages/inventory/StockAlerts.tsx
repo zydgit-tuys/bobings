@@ -6,6 +6,12 @@ import { useInventoryAlerts } from "@/hooks/use-inventory";
 export function StockAlerts() {
   const { data: alerts, isLoading } = useInventoryAlerts();
 
+  // Map variant_id to id for DataTable compatibility
+  const alertsWithId = (alerts ?? []).map((alert) => ({
+    ...alert,
+    id: alert.variant_id,
+  }));
+
   const columns = [
     { key: "sku_variant", header: "SKU Variant" },
     { key: "product_name", header: "Product" },
@@ -47,7 +53,7 @@ export function StockAlerts() {
   return (
     <DataTable
       columns={columns}
-      data={alerts ?? []}
+      data={alertsWithId}
       isLoading={isLoading}
       emptyMessage="No low stock alerts"
     />
