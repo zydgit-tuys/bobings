@@ -17,6 +17,7 @@ import SalesList from "@/pages/sales/SalesList";
 import InventoryList from "@/pages/inventory/InventoryList";
 import AccountingPage from "@/pages/accounting/AccountingPage";
 import VirtualStockPage from "@/pages/virtual-stock/VirtualStockPage";
+import SettingsPage from "@/pages/settings/SettingsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/inventory" element={<InventoryList />} />
             <Route path="/virtual-stock" element={<VirtualStockPage />} />
             <Route path="/accounting" element={<AccountingPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
