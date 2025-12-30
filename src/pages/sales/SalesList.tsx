@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FileUp, Eye, Copy, Trash2 } from "lucide-react";
+import { FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,14 +13,11 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { MobileCardList } from "@/components/shared/MobileCardList";
 import { useSalesOrders } from "@/hooks/use-sales";
 import { SalesImportDialog } from "./SalesImportDialog";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
 export default function SalesList() {
-  const isMobile = useIsMobile();
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState({
     startDate: "",
@@ -37,14 +34,14 @@ export default function SalesList() {
   );
 
   const columns = [
-    { key: "desty_order_no", header: "Order No" },
+    { key: "desty_order_no", header: "Order No", primary: true },
     {
       key: "order_date",
-      header: "Date",
+      header: "Tanggal",
       render: (item: any) => format(new Date(item.order_date), "dd MMM yyyy"),
     },
     { key: "marketplace", header: "Marketplace" },
-    { key: "customer_name", header: "Customer" },
+    { key: "customer_name", header: "Customer", hideOnMobile: true },
     {
       key: "status",
       header: "Status",
@@ -53,47 +50,42 @@ export default function SalesList() {
     {
       key: "total_amount",
       header: "Amount",
-      render: (item: any) => `Rp ${item.total_amount.toLocaleString()}`,
+      render: (item: any) => `Rp ${item.total_amount.toLocaleString('id-ID')}`,
     },
     {
       key: "profit",
       header: "Profit",
       render: (item: any) => (
-        <span className={item.profit >= 0 ? "text-green-600" : "text-destructive"}>
-          Rp {item.profit.toLocaleString()}
+        <span className={item.profit >= 0 ? "text-emerald-600" : "text-destructive"}>
+          Rp {item.profit.toLocaleString('id-ID')}
         </span>
       ),
     },
   ];
 
-  const renderOrderCard = (order: any) => (
+  const mobileCardRender = (order: any) => (
     <div className="p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="font-medium text-sm">{order.desty_order_no}</span>
         <StatusBadge status={order.status} />
       </div>
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{order.marketplace}</span>
         <span>{format(new Date(order.order_date), "dd MMM yyyy")}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground truncate max-w-[150px]">
+        <span className="text-xs text-muted-foreground truncate max-w-[120px]">
           {order.customer_name || "-"}
         </span>
         <div className="text-right">
-          <div className="text-sm font-medium">Rp {order.total_amount.toLocaleString()}</div>
-          <div className={`text-xs ${order.profit >= 0 ? "text-green-600" : "text-destructive"}`}>
-            Profit: Rp {order.profit.toLocaleString()}
+          <div className="text-sm font-medium">Rp {order.total_amount.toLocaleString('id-ID')}</div>
+          <div className={`text-[10px] ${order.profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+            Profit: Rp {order.profit.toLocaleString('id-ID')}
           </div>
         </div>
       </div>
     </div>
   );
-
-  const handleCopyOrder = (order: any) => {
-    navigator.clipboard.writeText(order.desty_order_no);
-    toast.success("Order number copied");
-  };
 
   const handleViewOrder = (order: any) => {
     toast.info(`Viewing order ${order.desty_order_no}`);
@@ -105,8 +97,8 @@ export default function SalesList() {
         title="Sales Orders"
         description="View and import sales orders"
         action={
-          <Button onClick={() => setShowImport(true)} size="sm" className="md:size-default">
-            <FileUp className="h-4 w-4 mr-1 md:mr-2" />
+          <Button onClick={() => setShowImport(true)} size="sm">
+            <FileUp className="h-4 w-4 mr-1" />
             <span className="hidden sm:inline">Import Desty</span>
             <span className="sm:hidden">Import</span>
           </Button>
@@ -114,30 +106,30 @@ export default function SalesList() {
       />
 
       {/* Filters */}
-      <div className="grid grid-cols-2 gap-2 mb-4 md:flex md:flex-wrap md:gap-4 md:mb-6">
+      <div className="grid grid-cols-2 gap-2 mb-3 md:flex md:flex-wrap md:gap-3 md:mb-4">
         <Input
           type="date"
           placeholder="Start Date"
           value={filters.startDate}
           onChange={(e) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
-          className="w-full md:w-40"
+          className="w-full md:w-36 h-9 text-sm"
         />
         <Input
           type="date"
           placeholder="End Date"
           value={filters.endDate}
           onChange={(e) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
-          className="w-full md:w-40"
+          className="w-full md:w-36 h-9 text-sm"
         />
         <Select
           value={filters.marketplace || "all"}
           onValueChange={(v) => setFilters((f) => ({ ...f, marketplace: v === "all" ? "" : v }))}
         >
-          <SelectTrigger className="w-full md:w-40">
+          <SelectTrigger className="w-full md:w-32 h-9 text-sm">
             <SelectValue placeholder="Marketplace" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             <SelectItem value="Shopee">Shopee</SelectItem>
             <SelectItem value="Tokopedia">Tokopedia</SelectItem>
             <SelectItem value="Lazada">Lazada</SelectItem>
@@ -148,11 +140,11 @@ export default function SalesList() {
           value={filters.status || "all"}
           onValueChange={(v) => setFilters((f) => ({ ...f, status: v === "all" ? "" : v }))}
         >
-          <SelectTrigger className="w-full md:w-40">
+          <SelectTrigger className="w-full md:w-32 h-9 text-sm">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -161,43 +153,23 @@ export default function SalesList() {
         </Select>
         <Button
           variant="outline"
+          size="sm"
           onClick={() => setFilters({ startDate: "", endDate: "", marketplace: "", status: "" })}
-          className="col-span-2 md:col-span-1"
+          className="col-span-2 md:col-span-1 h-9"
         >
           Clear
         </Button>
       </div>
 
-      {isMobile ? (
-        <MobileCardList
-          data={orders ?? []}
-          isLoading={isLoading}
-          emptyMessage="No sales orders found."
-          renderCard={renderOrderCard}
-          onCardClick={handleViewOrder}
-          leftActions={[
-            {
-              icon: <Copy className="h-5 w-5" />,
-              label: "Copy",
-              onClick: handleCopyOrder,
-            },
-          ]}
-          rightActions={[
-            {
-              icon: <Eye className="h-5 w-5" />,
-              label: "View",
-              onClick: handleViewOrder,
-            },
-          ]}
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={orders ?? []}
-          isLoading={isLoading}
-          emptyMessage="No sales orders found."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={orders ?? []}
+        isLoading={isLoading}
+        emptyMessage="Belum ada sales order."
+        onRowClick={handleViewOrder}
+        mobileCardRender={mobileCardRender}
+        showFilters={false}
+      />
 
       <SalesImportDialog open={showImport} onOpenChange={setShowImport} />
     </div>
