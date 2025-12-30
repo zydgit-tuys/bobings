@@ -16,12 +16,12 @@ export default function SupplierList() {
   const [showDialog, setShowDialog] = useState(false);
 
   const columns = [
-    { key: "code", header: "Code" },
+    { key: "code", header: "Code", primary: true },
     { key: "name", header: "Name" },
-    { key: "contact_person", header: "Contact Person" },
-    { key: "phone", header: "Phone" },
-    { key: "email", header: "Email" },
-    { key: "city", header: "City" },
+    { key: "contact_person", header: "Contact Person", hideOnMobile: true },
+    { key: "phone", header: "Phone", hideOnMobile: true },
+    { key: "email", header: "Email", hideOnMobile: true },
+    { key: "city", header: "City", hideOnMobile: true },
     {
       key: "actions",
       header: "",
@@ -53,6 +53,49 @@ export default function SupplierList() {
     },
   ];
 
+  const mobileCardRender = (item: Supplier) => (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium">{item.name}</p>
+          <p className="text-sm text-muted-foreground">{item.code}</p>
+        </div>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditSupplier(item);
+              setShowDialog(true);
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteId(item.id);
+            }}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+      {item.contact_person && (
+        <p className="text-sm">Contact: {item.contact_person}</p>
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        {item.phone && <span>{item.phone}</span>}
+        {item.city && <span>{item.city}</span>}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
@@ -83,6 +126,7 @@ export default function SupplierList() {
           setEditSupplier(item);
           setShowDialog(true);
         }}
+        mobileCardRender={mobileCardRender}
       />
 
       <SupplierDialog
