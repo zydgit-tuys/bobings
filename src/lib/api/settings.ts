@@ -10,9 +10,8 @@ export interface AppSetting {
 
 // Setting keys constants
 export const SETTING_KEYS = {
-  // Account Mappings for Auto Journaling
+  // Account Mappings for Auto Journaling (Bank dikelola di tabel bank_accounts)
   ACCOUNT_KAS: 'account_kas',
-  ACCOUNT_BANK: 'account_bank',
   ACCOUNT_PERSEDIAAN: 'account_persediaan',
   ACCOUNT_HUTANG_SUPPLIER: 'account_hutang_supplier',
   ACCOUNT_PIUTANG_MARKETPLACE: 'account_piutang_marketplace',

@@ -17,9 +17,8 @@ interface AccountMapping {
 }
 
 const ACCOUNT_MAPPINGS: AccountMapping[] = [
-  // Asset & Liability accounts
+  // Asset & Liability accounts (Bank dikelola di tab Akun Bank)
   { key: SETTING_KEYS.ACCOUNT_KAS, label: "Kas", description: "Akun untuk pembayaran tunai", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_BANK, label: "Bank", description: "Akun untuk transfer bank", category: "Umum" },
   { key: SETTING_KEYS.ACCOUNT_PERSEDIAAN, label: "Persediaan", description: "Akun untuk nilai inventaris", category: "Umum" },
   { key: SETTING_KEYS.ACCOUNT_HUTANG_SUPPLIER, label: "Hutang Supplier", description: "Akun untuk hutang pembelian", category: "Umum" },
   { key: SETTING_KEYS.ACCOUNT_PIUTANG_MARKETPLACE, label: "Piutang Marketplace", description: "Akun untuk piutang dari marketplace", category: "Umum" },
