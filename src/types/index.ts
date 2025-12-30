@@ -15,6 +15,9 @@ export interface Product {
   brand_id?: string;
   category_id?: string;
   is_active: boolean;
+  images?: string[];
+  virtual_stock: boolean;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -30,6 +33,7 @@ export interface ProductVariant {
   color_value_id?: string;
   size_value_id?: string;
   is_active: boolean;
+  virtual_stock_qty: number;
   created_at: string;
   updated_at: string;
 }

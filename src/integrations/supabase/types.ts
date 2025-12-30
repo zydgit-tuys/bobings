@@ -358,6 +358,7 @@ export type Database = {
           sku_variant: string
           stock_qty: number
           updated_at: string
+          virtual_stock_qty: number
         }
         Insert: {
           color_value_id?: string | null
@@ -372,6 +373,7 @@ export type Database = {
           sku_variant: string
           stock_qty?: number
           updated_at?: string
+          virtual_stock_qty?: number
         }
         Update: {
           color_value_id?: string | null
@@ -386,6 +388,7 @@ export type Database = {
           sku_variant?: string
           stock_qty?: number
           updated_at?: string
+          virtual_stock_qty?: number
         }
         Relationships: [
           {
@@ -419,10 +422,13 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          images: string[] | null
           is_active: boolean
           name: string
           sku_master: string
+          sort_order: number
           updated_at: string
+          virtual_stock: boolean
         }
         Insert: {
           base_price?: number
@@ -431,10 +437,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          images?: string[] | null
           is_active?: boolean
           name: string
           sku_master: string
+          sort_order?: number
           updated_at?: string
+          virtual_stock?: boolean
         }
         Update: {
           base_price?: number
@@ -443,10 +452,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          images?: string[] | null
           is_active?: boolean
           name?: string
           sku_master?: string
+          sort_order?: number
           updated_at?: string
+          virtual_stock?: boolean
         }
         Relationships: [
           {

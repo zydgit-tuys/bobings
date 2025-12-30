@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Warehouse,
   BookOpen,
+  Boxes,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -27,6 +28,7 @@ const menuItems = [
   { title: "Purchases", url: "/purchases", icon: ShoppingCart },
   { title: "Sales", url: "/sales", icon: FileSpreadsheet },
   { title: "Inventory", url: "/inventory", icon: Warehouse },
+  { title: "Virtual Stock", url: "/virtual-stock", icon: Boxes },
   { title: "Accounting", url: "/accounting", icon: BookOpen },
 ];
 

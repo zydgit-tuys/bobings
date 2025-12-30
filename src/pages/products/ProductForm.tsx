@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,6 +7,8 @@ import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Form,
   FormControl,
@@ -54,6 +56,7 @@ export default function ProductForm() {
   const { data: categories } = useCategories();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
+  const [virtualStock, setVirtualStock] = useState(false);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -77,13 +80,14 @@ export default function ProductForm() {
         brand_id: product.brand_id ?? "",
         category_id: product.category_id ?? "",
       });
+      setVirtualStock(product.virtual_stock ?? false);
     }
   }, [product, form]);
 
   const onSubmit = (data: ProductFormData) => {
     if (isEdit) {
       updateProduct.mutate(
-        { id, data: { ...data, brand_id: data.brand_id || null, category_id: data.category_id || null } },
+        { id, data: { ...data, brand_id: data.brand_id || null, category_id: data.category_id || null, virtual_stock: virtualStock } },
         { onSuccess: () => navigate("/products") }
       );
     } else {
@@ -95,6 +99,8 @@ export default function ProductForm() {
         brand_id: data.brand_id || null,
         category_id: data.category_id || null,
         is_active: true,
+        virtual_stock: false,
+        sort_order: 0,
       }, { onSuccess: () => navigate("/products") });
     }
   };
@@ -234,6 +240,19 @@ export default function ProductForm() {
                     </FormItem>
                   )}
                 />
+
+                {isEdit && (
+                  <div className="flex items-center space-x-3 pt-2">
+                    <Switch
+                      id="virtual-stock"
+                      checked={virtualStock}
+                      onCheckedChange={setVirtualStock}
+                    />
+                    <Label htmlFor="virtual-stock" className="cursor-pointer">
+                      Enable Virtual Stock
+                    </Label>
+                  </div>
+                )}
 
                 <Button
                   type="submit"

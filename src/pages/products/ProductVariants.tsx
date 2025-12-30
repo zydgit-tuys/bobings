@@ -73,6 +73,7 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
           min_stock_alert: data.min_stock_alert,
           product_id: productId,
           is_active: true,
+          virtual_stock_qty: 0,
         },
         { onSuccess: () => { setOpen(false); form.reset(); } }
       );
