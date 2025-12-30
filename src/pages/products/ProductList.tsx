@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
@@ -21,6 +21,22 @@ export default function ProductList({ embedded = false }: ProductListProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const columns = [
+    {
+      key: "image",
+      header: "",
+      render: (item: any) => {
+        const firstImage = item.images?.[0];
+        return (
+          <div className="w-10 h-10 rounded overflow-hidden bg-muted flex items-center justify-center">
+            {firstImage ? (
+              <img src={firstImage} alt={item.name} className="w-full h-full object-cover" />
+            ) : (
+              <Image className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+        );
+      },
+    },
     { key: "sku_master", header: "SKU" },
     { key: "name", header: "Name" },
     {
@@ -73,24 +89,35 @@ export default function ProductList({ embedded = false }: ProductListProps) {
     },
   ];
 
-  const renderProductCard = (product: any) => (
-    <div className="p-4">
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <p className="font-medium text-foreground">{product.name}</p>
-          <p className="text-sm text-muted-foreground">{product.sku_master}</p>
+  const renderProductCard = (product: any) => {
+    const firstImage = product.images?.[0];
+    return (
+      <div className="p-4 flex gap-3">
+        <div className="w-14 h-14 rounded overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center">
+          {firstImage ? (
+            <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            <Image className="h-5 w-5 text-muted-foreground" />
+          )}
         </div>
-        <span className="text-sm font-medium text-primary">
-          Rp {product.base_price.toLocaleString()}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start mb-1">
+            <div className="min-w-0">
+              <p className="font-medium text-foreground truncate">{product.name}</p>
+              <p className="text-sm text-muted-foreground">{product.sku_master}</p>
+            </div>
+            <span className="text-sm font-medium text-primary ml-2 flex-shrink-0">
+              Rp {product.base_price.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <span>{product.brands?.name ?? "-"}</span>
+            <span>{product.product_variants?.length ?? 0} variants</span>
+          </div>
+        </div>
       </div>
-      <div className="flex gap-4 text-sm text-muted-foreground">
-        <span>{product.brands?.name ?? "-"}</span>
-        <span>{product.categories?.name ?? "-"}</span>
-        <span>{product.product_variants?.length ?? 0} variants</span>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
