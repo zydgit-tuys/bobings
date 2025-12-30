@@ -9,6 +9,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Dashboard from "@/pages/Dashboard";
 import ProductList from "@/pages/products/ProductList";
 import ProductForm from "@/pages/products/ProductForm";
+import MasterDataPage from "@/pages/master-data/MasterDataPage";
 import SupplierList from "@/pages/suppliers/SupplierList";
 import PurchaseList from "@/pages/purchases/PurchaseList";
 import PurchaseForm from "@/pages/purchases/PurchaseForm";
@@ -28,6 +29,7 @@ const App = () => (
         <AppLayout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/master-data" element={<MasterDataPage />} />
             <Route path="/products" element={<ProductList />} />
             <Route path="/products/:id" element={<ProductForm />} />
             <Route path="/suppliers" element={<SupplierList />} />

@@ -9,7 +9,11 @@ import { MobileCardList } from "@/components/shared/MobileCardList";
 import { useProducts, useDeleteProduct } from "@/hooks/use-products";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-export default function ProductList() {
+interface ProductListProps {
+  embedded?: boolean;
+}
+
+export default function ProductList({ embedded = false }: ProductListProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { data: products, isLoading } = useProducts();
@@ -90,17 +94,28 @@ export default function ProductList() {
 
   return (
     <div>
-      <PageHeader
-        title="Products"
-        description="Manage your product catalog"
-        action={
-          <Button onClick={() => navigate("/products/new")} size="sm" className="md:size-default">
-            <Plus className="h-4 w-4 mr-1 md:mr-2" />
-            <span className="hidden sm:inline">Add Product</span>
-            <span className="sm:hidden">Add</span>
+      {!embedded && (
+        <PageHeader
+          title="Products"
+          description="Manage your product catalog"
+          action={
+            <Button onClick={() => navigate("/products/new")} size="sm" className="md:size-default">
+              <Plus className="h-4 w-4 mr-1 md:mr-2" />
+              <span className="hidden sm:inline">Add Product</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
+          }
+        />
+      )}
+      
+      {embedded && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={() => navigate("/products/new")} size={isMobile ? "sm" : "default"}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
           </Button>
-        }
-      />
+        </div>
+      )}
 
       {isMobile ? (
         <MobileCardList
