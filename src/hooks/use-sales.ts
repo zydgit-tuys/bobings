@@ -3,7 +3,9 @@ import {
   getSalesOrders, getSalesOrder,
   getSalesImports, getSalesImport,
   parseDestyFile, processSalesImport,
-  getSalesStats
+  getSalesStats,
+  createSalesOrder,
+  type CreateSalesOrderInput
 } from '@/lib/api/sales';
 import type { DestyRow } from '@/types';
 import { toast } from 'sonner';
@@ -26,6 +28,23 @@ export function useSalesOrder(id: string) {
     queryKey: ['sales-orders', id],
     queryFn: () => getSalesOrder(id),
     enabled: !!id,
+  });
+}
+
+export function useCreateSalesOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateSalesOrderInput) => createSalesOrder(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['variants'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      toast.success('Sales order berhasil dibuat');
+    },
+    onError: (error: Error) => {
+      toast.error(`Gagal membuat sales order: ${error.message}`);
+    },
   });
 }
 
