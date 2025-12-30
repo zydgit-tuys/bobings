@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2, Image } from "lucide-react";
+import { Plus, Pencil, Trash2, Image, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -16,6 +17,12 @@ export default function ProductList({ embedded = false }: ProductListProps) {
   const { data: products, isLoading } = useProducts();
   const deleteProduct = useDeleteProduct();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredProducts = (products ?? []).filter((p: any) =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.sku_master.toLowerCase().includes(search.toLowerCase())
+  );
 
   const columns = [
     {
@@ -137,11 +144,31 @@ export default function ProductList({ embedded = false }: ProductListProps) {
               <span className="sm:hidden">Tambah</span>
             </Button>
           }
+          filter={
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Cari produk..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-9 text-sm"
+              />
+            </div>
+          }
         />
       )}
       
       {embedded && (
-        <div className="flex justify-end mb-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari produk..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-9 text-sm"
+            />
+          </div>
           <Button onClick={() => navigate("/products/new")} size="sm">
             <Plus className="h-4 w-4 mr-1" />
             Tambah
@@ -151,7 +178,7 @@ export default function ProductList({ embedded = false }: ProductListProps) {
 
       <DataTable
         columns={columns}
-        data={products ?? []}
+        data={filteredProducts}
         isLoading={isLoading}
         emptyMessage="Belum ada produk. Tambahkan produk pertama."
         onRowClick={(item) => navigate(`/products/${item.id}`)}
