@@ -155,7 +155,7 @@ export default function PurchaseForm() {
         title={isEdit ? `Purchase Order: ${purchase?.purchase_no}` : "New Purchase Order"}
         action={
           <div className="flex gap-2">
-            {isEdit && (purchase?.status === "received" || purchase?.status === "partial") && (
+            {isEdit && purchase?.status !== "draft" && purchase?.status !== "cancelled" && (
               <Button variant="outline" onClick={() => setShowPaymentDialog(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
                 Payment
