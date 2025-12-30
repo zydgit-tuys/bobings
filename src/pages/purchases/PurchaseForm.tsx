@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { ArrowLeft, Save, Plus, Trash2, PackageCheck } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, PackageCheck, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,7 @@ import {
 } from "@/hooks/use-purchases";
 import { PurchaseLineDialog } from "./PurchaseLineDialog";
 import { ReceiveDialog } from "./ReceiveDialog";
+import { PaymentDialog } from "./PaymentDialog";
 
 const purchaseSchema = z.object({
   purchase_no: z.string().min(1, "PO number is required"),
@@ -65,6 +66,7 @@ export default function PurchaseForm() {
 
   const [showLineDialog, setShowLineDialog] = useState(false);
   const [showReceiveDialog, setShowReceiveDialog] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseSchema),
@@ -153,6 +155,12 @@ export default function PurchaseForm() {
         title={isEdit ? `Purchase Order: ${purchase?.purchase_no}` : "New Purchase Order"}
         action={
           <div className="flex gap-2">
+            {isEdit && (purchase?.status === "received" || purchase?.status === "partial") && (
+              <Button variant="outline" onClick={() => setShowPaymentDialog(true)}>
+                <CreditCard className="h-4 w-4 mr-2" />
+                Payment
+              </Button>
+            )}
             {isEdit && purchase?.status !== "received" && purchase?.status !== "cancelled" && (
               <Button variant="outline" onClick={() => setShowReceiveDialog(true)}>
                 <PackageCheck className="h-4 w-4 mr-2" />
@@ -307,6 +315,11 @@ export default function PurchaseForm() {
           <ReceiveDialog
             open={showReceiveDialog}
             onOpenChange={setShowReceiveDialog}
+            purchase={purchase}
+          />
+          <PaymentDialog
+            open={showPaymentDialog}
+            onOpenChange={setShowPaymentDialog}
             purchase={purchase}
           />
         </>
