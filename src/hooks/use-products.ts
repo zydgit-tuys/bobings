@@ -3,7 +3,9 @@ import {
   getProducts, getProduct, createProduct, updateProduct, deleteProduct,
   getVariants, createVariant, updateVariant,
   getBrands, createBrand,
-  getCategories, createCategory
+  getCategories, createCategory,
+  getVariantAttributes, createVariantAttribute, updateVariantAttribute, deleteVariantAttribute,
+  getAttributeValues, createAttributeValue, updateAttributeValue, deleteAttributeValue
 } from '@/lib/api/products';
 import type { Product, ProductVariant } from '@/types';
 import { toast } from 'sonner';
@@ -153,6 +155,117 @@ export function useCreateCategory() {
     },
     onError: (error: Error) => {
       toast.error(`Failed to create category: ${error.message}`);
+    },
+  });
+}
+
+// Variant Attributes
+export function useVariantAttributes() {
+  return useQuery({
+    queryKey: ['variant-attributes'],
+    queryFn: getVariantAttributes,
+  });
+}
+
+export function useCreateVariantAttribute() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createVariantAttribute,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Attribute created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create attribute: ${error.message}`);
+    },
+  });
+}
+
+export function useUpdateVariantAttribute() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      updateVariantAttribute(id, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Attribute updated successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update attribute: ${error.message}`);
+    },
+  });
+}
+
+export function useDeleteVariantAttribute() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteVariantAttribute,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Attribute deleted successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete attribute: ${error.message}`);
+    },
+  });
+}
+
+// Attribute Values
+export function useAttributeValues(attributeId?: string) {
+  return useQuery({
+    queryKey: ['attribute-values', attributeId],
+    queryFn: () => getAttributeValues(attributeId),
+  });
+}
+
+export function useCreateAttributeValue() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createAttributeValue,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attribute-values'] });
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Value created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to create value: ${error.message}`);
+    },
+  });
+}
+
+export function useUpdateAttributeValue() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { value?: string; sort_order?: number } }) =>
+      updateAttributeValue(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attribute-values'] });
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Value updated successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update value: ${error.message}`);
+    },
+  });
+}
+
+export function useDeleteAttributeValue() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteAttributeValue,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attribute-values'] });
+      queryClient.invalidateQueries({ queryKey: ['variant-attributes'] });
+      toast.success('Value deleted successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete value: ${error.message}`);
     },
   });
 }
