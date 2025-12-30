@@ -113,25 +113,25 @@ export default function ProductForm() {
   }
 
   return (
-    <div>
+    <div className="space-y-3 md:space-y-6">
       <PageHeader
         title={isEdit ? "Edit Product" : "New Product"}
         action={
-          <Button variant="outline" onClick={() => navigate("/products")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+          <Button variant="outline" size="sm" onClick={() => navigate("/products")}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Back</span>
           </Button>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-3 md:gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle>Product Details</CardTitle>
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
                 <FormField
                   control={form.control}
                   name="sku_master"
@@ -259,10 +259,12 @@ export default function ProductForm() {
 
                 <Button
                   type="submit"
+                  size="sm"
+                  className="w-full md:w-auto"
                   disabled={createProduct.isPending || updateProduct.isPending}
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isEdit ? "Update Product" : "Create Product"}
+                  <Save className="h-4 w-4 mr-1" />
+                  {isEdit ? "Update" : "Create"}
                 </Button>
               </form>
             </Form>
@@ -270,10 +272,10 @@ export default function ProductForm() {
         </Card>
 
         {isEdit && (
-          <div className="space-y-6">
+          <div className="space-y-3 md:space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Product Images</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle>Images</CardTitle>
               </CardHeader>
               <CardContent>
                 <ProductImageUpload

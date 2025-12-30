@@ -178,22 +178,23 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium">Product Images</h4>
+        <span className="text-xs text-muted-foreground">{images.length} images</span>
         <Button
           type="button"
           variant="outline"
           size="sm"
+          className="h-7 text-xs"
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
         >
           {uploading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
           ) : (
-            <ImagePlus className="h-4 w-4 mr-2" />
+            <ImagePlus className="h-3.5 w-3.5 mr-1" />
           )}
-          Add Images
+          Add
         </Button>
         <input
           ref={inputRef}
@@ -212,7 +213,7 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
           onDragEnd={handleDragEnd}
         >
           <SortableContext items={images} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {images.map((url) => (
                 <SortableImageItem
                   key={url}
@@ -225,19 +226,12 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
         </DndContext>
       ) : (
         <div 
-          className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
+          className="border-2 border-dashed rounded-lg p-6 text-center text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
           onClick={() => inputRef.current?.click()}
         >
-          <ImagePlus className="h-10 w-10 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Click to upload images</p>
-          <p className="text-xs mt-1">JPG, PNG, WebP, GIF (max 5MB each)</p>
+          <ImagePlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p className="text-xs">Click to upload</p>
         </div>
-      )}
-
-      {images.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Drag to reorder. First image will be the main product image.
-        </p>
       )}
     </div>
   );
