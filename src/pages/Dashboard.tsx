@@ -1,115 +1,172 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useProducts } from "@/hooks/use-products";
 import { useSuppliers } from "@/hooks/use-suppliers";
 import { usePurchases } from "@/hooks/use-purchases";
-import { useSalesOrders } from "@/hooks/use-sales";
+import { useSalesOrders, useSalesStats } from "@/hooks/use-sales";
 import { useInventoryAlerts } from "@/hooks/use-inventory";
-import { Package, Truck, ShoppingCart, FileSpreadsheet, AlertTriangle } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { 
+  Package, 
+  Truck, 
+  ShoppingCart, 
+  DollarSign, 
+  TrendingUp,
+  Percent,
+  BarChart3,
+  AlertTriangle 
+} from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { SalesTrendChart } from "@/components/dashboard/SalesTrendChart";
+import { MarketplaceChart } from "@/components/dashboard/MarketplaceChart";
+import { TopProductsTable } from "@/components/dashboard/TopProductsTable";
+import { ProfitBreakdown } from "@/components/dashboard/ProfitBreakdown";
+import { InventoryOverview } from "@/components/dashboard/InventoryOverview";
+
+type Period = 'today' | 'week' | 'month' | 'year';
 
 export default function Dashboard() {
+  const [period, setPeriod] = useState<Period>('month');
+  
   const { data: products, isLoading: loadingProducts } = useProducts();
   const { data: suppliers, isLoading: loadingSuppliers } = useSuppliers();
   const { data: purchases, isLoading: loadingPurchases } = usePurchases();
   const { data: salesOrders, isLoading: loadingSales } = useSalesOrders();
   const { data: alerts, isLoading: loadingAlerts } = useInventoryAlerts();
+  const { data: salesStats, isLoading: loadingStats } = useSalesStats(period);
 
-  const stats = [
-    {
-      title: "Total Products",
-      value: products?.length ?? 0,
-      icon: Package,
-      isLoading: loadingProducts,
-    },
-    {
-      title: "Suppliers",
-      value: suppliers?.length ?? 0,
-      icon: Truck,
-      isLoading: loadingSuppliers,
-    },
-    {
-      title: "Purchase Orders",
-      value: purchases?.length ?? 0,
-      icon: ShoppingCart,
-      isLoading: loadingPurchases,
-    },
-    {
-      title: "Sales Orders",
-      value: salesOrders?.length ?? 0,
-      icon: FileSpreadsheet,
-      isLoading: loadingSales,
-    },
-    {
-      title: "Low Stock Alerts",
-      value: alerts?.length ?? 0,
-      icon: AlertTriangle,
-      isLoading: loadingAlerts,
-    },
-  ];
+  const periodDays = {
+    today: 1,
+    week: 7,
+    month: 30,
+    year: 365,
+  };
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1_000_000_000) return `Rp ${(value / 1_000_000_000).toFixed(1)}M`;
+    if (value >= 1_000_000) return `Rp ${(value / 1_000_000).toFixed(1)}jt`;
+    if (value >= 1_000) return `Rp ${(value / 1_000).toFixed(0)}rb`;
+    return `Rp ${value}`;
+  };
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader 
         title="Dashboard" 
-        description="Overview of your marketplace resource planning"
+        description="Analytics dan overview bisnis"
       />
 
-      <div className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-3 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 md:pb-2 p-3 md:p-6">
-              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className="h-3.5 w-3.5 md:h-4 md:w-4 text-muted-foreground shrink-0" />
-            </CardHeader>
-            <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
-              {stat.isLoading ? (
-                <Skeleton className="h-6 md:h-8 w-12 md:w-16" />
-              ) : (
-                <div className="text-lg md:text-2xl font-bold">{stat.value}</div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+      {/* Period Selector */}
+      <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
+        <TabsList className="w-full grid grid-cols-4 h-8 md:h-9 md:w-auto md:inline-flex">
+          <TabsTrigger value="today" className="text-xs md:text-sm">Hari Ini</TabsTrigger>
+          <TabsTrigger value="week" className="text-xs md:text-sm">7 Hari</TabsTrigger>
+          <TabsTrigger value="month" className="text-xs md:text-sm">30 Hari</TabsTrigger>
+          <TabsTrigger value="year" className="text-xs md:text-sm">1 Tahun</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Key Metrics */}
+      <div className="grid grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">
+        <StatCard
+          title="Total Revenue"
+          value={formatCurrency(salesStats?.totalRevenue || 0)}
+          subtitle={`${salesStats?.orderCount || 0} order`}
+          icon={DollarSign}
+          isLoading={loadingStats}
+        />
+        <StatCard
+          title="Profit Bersih"
+          value={formatCurrency(salesStats?.totalProfit || 0)}
+          subtitle={salesStats?.totalRevenue 
+            ? `Margin ${((salesStats.totalProfit / salesStats.totalRevenue) * 100).toFixed(1)}%` 
+            : undefined}
+          icon={TrendingUp}
+          isLoading={loadingStats}
+          variant={salesStats?.totalProfit && salesStats.totalProfit > 0 ? 'success' : 'default'}
+        />
+        <StatCard
+          title="HPP (Modal)"
+          value={formatCurrency(salesStats?.totalHpp || 0)}
+          subtitle={salesStats?.totalRevenue 
+            ? `${((salesStats.totalHpp / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue` 
+            : undefined}
+          icon={Package}
+          isLoading={loadingStats}
+        />
+        <StatCard
+          title="Fees Marketplace"
+          value={formatCurrency(salesStats?.totalFees || 0)}
+          subtitle={salesStats?.totalRevenue 
+            ? `${((salesStats.totalFees / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue` 
+            : undefined}
+          icon={Percent}
+          isLoading={loadingStats}
+          variant="warning"
+        />
       </div>
 
-      {/* Low Stock Alerts */}
-      {alerts && alerts.length > 0 && (
-        <Card className="mt-4 md:mt-6">
-          <CardHeader className="p-3 md:p-6">
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-destructive" />
-              Low Stock Alerts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
-            <div className="space-y-2">
-              {alerts.slice(0, 5).map((alert) => (
-                <div
-                  key={alert.variant_id}
-                  className="flex flex-col gap-1 p-2 md:p-3 bg-muted/50 rounded-lg md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm md:text-base truncate">{alert.product_name}</p>
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">
-                      {alert.sku_variant} • {alert.size_name} / {alert.color_name}
-                    </p>
-                  </div>
-                  <div className="flex justify-between md:text-right md:flex-col gap-1 md:gap-0 mt-1 md:mt-0">
-                    <p className="text-sm font-medium text-destructive">
-                      Stock: {alert.current_stock}
-                    </p>
-                    <p className="text-xs md:text-sm text-muted-foreground">
-                      Min: {alert.min_stock}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-4 gap-2 md:gap-3">
+        <StatCard
+          title="Produk"
+          value={products?.length ?? 0}
+          icon={Package}
+          isLoading={loadingProducts}
+        />
+        <StatCard
+          title="Supplier"
+          value={suppliers?.length ?? 0}
+          icon={Truck}
+          isLoading={loadingSuppliers}
+        />
+        <StatCard
+          title="PO Aktif"
+          value={purchases?.filter(p => p.status !== 'received' && p.status !== 'cancelled').length ?? 0}
+          icon={ShoppingCart}
+          isLoading={loadingPurchases}
+        />
+        <StatCard
+          title="Low Stock"
+          value={alerts?.length ?? 0}
+          icon={AlertTriangle}
+          isLoading={loadingAlerts}
+          variant={alerts && alerts.length > 0 ? 'danger' : 'default'}
+        />
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div className="lg:col-span-2">
+          <SalesTrendChart days={periodDays[period]} />
+        </div>
+        <div>
+          <MarketplaceChart days={periodDays[period]} />
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        <TopProductsTable limit={5} days={periodDays[period]} />
+        <ProfitBreakdown days={periodDays[period]} />
+        <InventoryOverview />
+      </div>
+
+      {/* Marketplace Breakdown */}
+      {salesStats?.byMarketplace && Object.keys(salesStats.byMarketplace).length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
+          {Object.entries(salesStats.byMarketplace)
+            .sort((a, b) => b[1].revenue - a[1].revenue)
+            .map(([mp, stats]) => (
+              <StatCard
+                key={mp}
+                title={mp}
+                value={formatCurrency(stats.revenue)}
+                subtitle={`${stats.orders} order`}
+                icon={BarChart3}
+              />
+            ))}
+        </div>
       )}
     </div>
   );
