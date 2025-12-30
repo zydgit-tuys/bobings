@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { MobileCardList } from "@/components/shared/MobileCardList";
 import { useProducts, useDeleteProduct } from "@/hooks/use-products";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 interface ProductListProps {
   embedded?: boolean;
@@ -15,7 +13,6 @@ interface ProductListProps {
 
 export default function ProductList({ embedded = false }: ProductListProps) {
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
   const { data: products, isLoading } = useProducts();
   const deleteProduct = useDeleteProduct();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -24,6 +21,9 @@ export default function ProductList({ embedded = false }: ProductListProps) {
     {
       key: "image",
       header: "",
+      hideOnMobile: true,
+      sortable: false,
+      filterable: false,
       render: (item: any) => {
         const firstImage = item.images?.[0];
         return (
@@ -37,31 +37,36 @@ export default function ProductList({ embedded = false }: ProductListProps) {
         );
       },
     },
-    { key: "sku_master", header: "SKU" },
-    { key: "name", header: "Name" },
+    { key: "sku_master", header: "SKU", primary: true },
+    { key: "name", header: "Nama", primary: true },
     {
       key: "brand",
       header: "Brand",
+      hideOnMobile: true,
       render: (item: any) => item.brands?.name ?? "-",
     },
     {
       key: "category",
-      header: "Category",
+      header: "Kategori",
+      hideOnMobile: true,
       render: (item: any) => item.categories?.name ?? "-",
     },
     {
       key: "base_price",
-      header: "Base Price",
-      render: (item: any) => `Rp ${item.base_price.toLocaleString()}`,
+      header: "Harga",
+      render: (item: any) => `Rp ${item.base_price.toLocaleString('id-ID')}`,
     },
     {
       key: "variants",
-      header: "Variants",
+      header: "Variant",
       render: (item: any) => item.product_variants?.length ?? 0,
     },
     {
       key: "actions",
       header: "",
+      hideOnMobile: true,
+      sortable: false,
+      filterable: false,
       render: (item: any) => (
         <div className="flex gap-2">
           <Button
@@ -89,30 +94,30 @@ export default function ProductList({ embedded = false }: ProductListProps) {
     },
   ];
 
-  const renderProductCard = (product: any) => {
+  const mobileCardRender = (product: any) => {
     const firstImage = product.images?.[0];
     return (
-      <div className="p-4 flex gap-3">
-        <div className="w-14 h-14 rounded overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center">
+      <div className="p-3 flex gap-3">
+        <div className="w-12 h-12 rounded overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center">
           {firstImage ? (
             <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
           ) : (
-            <Image className="h-5 w-5 text-muted-foreground" />
+            <Image className="h-4 w-4 text-muted-foreground" />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start mb-1">
-            <div className="min-w-0">
-              <p className="font-medium text-foreground truncate">{product.name}</p>
-              <p className="text-sm text-muted-foreground">{product.sku_master}</p>
+          <div className="flex justify-between items-start">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm truncate">{product.name}</p>
+              <p className="text-xs text-muted-foreground">{product.sku_master}</p>
             </div>
-            <span className="text-sm font-medium text-primary ml-2 flex-shrink-0">
-              Rp {product.base_price.toLocaleString()}
+            <span className="text-xs font-medium text-primary ml-2 flex-shrink-0">
+              Rp {product.base_price.toLocaleString('id-ID')}
             </span>
           </div>
-          <div className="flex gap-4 text-sm text-muted-foreground">
+          <div className="flex gap-3 text-xs text-muted-foreground mt-1">
             <span>{product.brands?.name ?? "-"}</span>
-            <span>{product.product_variants?.length ?? 0} variants</span>
+            <span>{product.product_variants?.length ?? 0} variant</span>
           </div>
         </div>
       </div>
@@ -124,12 +129,12 @@ export default function ProductList({ embedded = false }: ProductListProps) {
       {!embedded && (
         <PageHeader
           title="Products"
-          description="Manage your product catalog"
+          description="Kelola katalog produk"
           action={
-            <Button onClick={() => navigate("/products/new")} size="sm" className="md:size-default">
-              <Plus className="h-4 w-4 mr-1 md:mr-2" />
-              <span className="hidden sm:inline">Add Product</span>
-              <span className="sm:hidden">Add</span>
+            <Button onClick={() => navigate("/products/new")} size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Tambah Produk</span>
+              <span className="sm:hidden">Tambah</span>
             </Button>
           }
         />
@@ -137,51 +142,27 @@ export default function ProductList({ embedded = false }: ProductListProps) {
       
       {embedded && (
         <div className="flex justify-end mb-4">
-          <Button onClick={() => navigate("/products/new")} size={isMobile ? "sm" : "default"}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
+          <Button onClick={() => navigate("/products/new")} size="sm">
+            <Plus className="h-4 w-4 mr-1" />
+            Tambah
           </Button>
         </div>
       )}
 
-      {isMobile ? (
-        <MobileCardList
-          data={products ?? []}
-          isLoading={isLoading}
-          emptyMessage="No products found. Add your first product."
-          renderCard={renderProductCard}
-          onCardClick={(item) => navigate(`/products/${item.id}`)}
-          leftActions={[
-            {
-              icon: <Pencil className="h-5 w-5" />,
-              label: "Edit",
-              onClick: (item) => navigate(`/products/${item.id}`),
-            },
-          ]}
-          rightActions={[
-            {
-              icon: <Trash2 className="h-5 w-5" />,
-              label: "Delete",
-              onClick: (item) => setDeleteId(item.id),
-              variant: "destructive",
-            },
-          ]}
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={products ?? []}
-          isLoading={isLoading}
-          emptyMessage="No products found. Add your first product."
-          onRowClick={(item) => navigate(`/products/${item.id}`)}
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={products ?? []}
+        isLoading={isLoading}
+        emptyMessage="Belum ada produk. Tambahkan produk pertama."
+        onRowClick={(item) => navigate(`/products/${item.id}`)}
+        mobileCardRender={mobileCardRender}
+      />
 
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={() => setDeleteId(null)}
-        title="Delete Product"
-        description="Are you sure you want to delete this product? This action cannot be undone."
+        title="Hapus Produk"
+        description="Yakin ingin menghapus produk ini? Tindakan ini tidak dapat dibatalkan."
         onConfirm={() => {
           if (deleteId) {
             deleteProduct.mutate(deleteId);

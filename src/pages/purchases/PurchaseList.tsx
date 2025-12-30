@@ -16,15 +16,16 @@ export default function PurchaseList() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const columns = [
-    { key: "purchase_no", header: "PO Number" },
+    { key: "purchase_no", header: "No. PO", primary: true },
     {
       key: "supplier",
       header: "Supplier",
+      primary: true,
       render: (item: any) => item.suppliers?.name ?? "-",
     },
     {
       key: "order_date",
-      header: "Order Date",
+      header: "Tanggal",
       render: (item: any) => format(new Date(item.order_date), "dd MMM yyyy"),
     },
     {
@@ -32,15 +33,18 @@ export default function PurchaseList() {
       header: "Status",
       render: (item: any) => <StatusBadge status={item.status} />,
     },
-    { key: "total_qty", header: "Total Qty" },
+    { key: "total_qty", header: "Qty", hideOnMobile: true },
     {
       key: "total_amount",
-      header: "Total Amount",
-      render: (item: any) => `Rp ${item.total_amount.toLocaleString()}`,
+      header: "Total",
+      render: (item: any) => `Rp ${item.total_amount.toLocaleString('id-ID')}`,
     },
     {
       key: "actions",
       header: "",
+      hideOnMobile: true,
+      sortable: false,
+      filterable: false,
       render: (item: any) => (
         <div className="flex gap-2">
           <Button
@@ -69,16 +73,33 @@ export default function PurchaseList() {
     },
   ];
 
+  const mobileCardRender = (purchase: any) => (
+    <div className="p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-medium text-sm">{purchase.purchase_no}</span>
+        <StatusBadge status={purchase.status} />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="truncate max-w-[150px]">{purchase.suppliers?.name ?? "-"}</span>
+        <span>{format(new Date(purchase.order_date), "dd MMM yyyy")}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{purchase.total_qty} item</span>
+        <span className="text-sm font-medium">Rp {purchase.total_amount.toLocaleString('id-ID')}</span>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         title="Purchase Orders"
-        description="Manage your purchase orders"
+        description="Kelola purchase order"
         action={
-          <Button onClick={() => navigate("/purchases/new")} size="sm" className="md:size-default">
-            <Plus className="h-4 w-4 mr-1 md:mr-2" />
-            <span className="hidden sm:inline">New Purchase</span>
-            <span className="sm:hidden">New</span>
+          <Button onClick={() => navigate("/purchases/new")} size="sm">
+            <Plus className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Buat PO</span>
+            <span className="sm:hidden">Baru</span>
           </Button>
         }
       />
@@ -87,15 +108,16 @@ export default function PurchaseList() {
         columns={columns}
         data={purchases ?? []}
         isLoading={isLoading}
-        emptyMessage="No purchase orders found."
+        emptyMessage="Belum ada purchase order."
         onRowClick={(item) => navigate(`/purchases/${item.id}`)}
+        mobileCardRender={mobileCardRender}
       />
 
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={() => setDeleteId(null)}
-        title="Delete Purchase Order"
-        description="Are you sure you want to delete this purchase order?"
+        title="Hapus Purchase Order"
+        description="Yakin ingin menghapus PO ini?"
         onConfirm={() => {
           if (deleteId) {
             deletePurchase.mutate(deleteId);

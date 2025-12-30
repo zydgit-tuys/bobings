@@ -13,6 +13,8 @@ import { usePagination } from "@/hooks/use-pagination";
 import { Input } from "@/components/ui/input";
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Card } from "@/components/ui/card";
 
 interface Column<T> {
   key: string;
@@ -20,6 +22,8 @@ interface Column<T> {
   render?: (item: T) => React.ReactNode;
   sortable?: boolean;
   filterable?: boolean;
+  hideOnMobile?: boolean;
+  primary?: boolean; // Primary columns show prominently on mobile card
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -33,6 +37,7 @@ interface DataTableProps<T> {
   pageSize?: number;
   showPagination?: boolean;
   showFilters?: boolean;
+  mobileCardRender?: (item: T) => React.ReactNode;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -44,7 +49,9 @@ export function DataTable<T extends { id: string }>({
   pageSize: initialPageSize = 10,
   showPagination = true,
   showFilters = true,
+  mobileCardRender,
 }: DataTableProps<T>) {
+  const isMobile = useIsMobile();
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -138,6 +145,121 @@ export function DataTable<T extends { id: string }>({
     );
   }
 
+  // Mobile Card View
+  const renderMobileCard = (item: T) => {
+    if (mobileCardRender) {
+      return mobileCardRender(item);
+    }
+
+    // Auto-generate card from columns
+    const primaryCols = columns.filter(c => c.primary);
+    const secondaryCols = columns.filter(c => !c.primary && !c.hideOnMobile);
+
+    return (
+      <div className="p-3">
+        {primaryCols.length > 0 ? (
+          <div className="mb-1">
+            {primaryCols.map(col => (
+              <div key={col.key} className="font-medium text-sm">
+                {col.render ? col.render(item) : (item as Record<string, unknown>)[col.key]?.toString() ?? "-"}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="font-medium text-sm mb-1">
+            {columns[0]?.render ? columns[0].render(item) : (item as Record<string, unknown>)[columns[0]?.key]?.toString() ?? "-"}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {(primaryCols.length > 0 ? secondaryCols : columns.slice(1)).slice(0, 4).map(col => (
+            <span key={col.key}>
+              <span className="text-muted-foreground/60">{col.header}: </span>
+              {col.render ? col.render(item) : (item as Record<string, unknown>)[col.key]?.toString() ?? "-"}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Mobile view
+  if (isMobile) {
+    return (
+      <div className="space-y-2">
+        {showFilters && filterableColumns.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showFilterRow ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowFilterRow(!showFilterRow)}
+              className="gap-1 h-8"
+            >
+              <Search className="h-3.5 w-3.5" />
+              Filter
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 h-8 text-muted-foreground">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {hasActiveFilters && (
+              <span className="text-xs text-muted-foreground">
+                {sortedData.length}/{data.length}
+              </span>
+            )}
+          </div>
+        )}
+
+        {showFilterRow && showFilters && (
+          <Input
+            placeholder="Cari..."
+            value={filters[columns[0]?.key] || ""}
+            onChange={(e) => handleFilterChange(columns[0]?.key, e.target.value)}
+            className="h-9 text-sm"
+          />
+        )}
+
+        {displayData.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8 text-sm">
+            {hasActiveFilters ? "Tidak ada hasil" : emptyMessage}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {displayData.map((item) => (
+              <Card
+                key={item.id}
+                onClick={() => onRowClick?.(item)}
+                className={onRowClick ? "cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors" : ""}
+              >
+                {renderMobileCard(item)}
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {showPagination && sortedData.length > 0 && (
+          <TablePagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            totalPages={pagination.totalPages}
+            totalItems={sortedData.length}
+            startIndex={pagination.startIndex}
+            endIndex={Math.min(pagination.endIndex, sortedData.length)}
+            hasNextPage={pagination.hasNextPage}
+            hasPrevPage={pagination.hasPrevPage}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.setPageSize}
+            onNextPage={pagination.goToNextPage}
+            onPrevPage={pagination.goToPrevPage}
+            onFirstPage={pagination.goToFirstPage}
+            onLastPage={pagination.goToLastPage}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Desktop table view
   return (
     <div className="space-y-2">
       {showFilters && filterableColumns.length > 0 && (
