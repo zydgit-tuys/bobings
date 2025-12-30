@@ -185,10 +185,11 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
 export async function triggerAutoJournalPurchase(
   purchaseId: string, 
   paymentType: 'cash' | 'bank' | 'hutang',
-  amount?: number
+  amount?: number,
+  bankAccountId?: string
 ) {
   const { data, error } = await supabase.functions.invoke('auto-journal-purchase', {
-    body: { purchaseId, paymentType, amount }
+    body: { purchaseId, paymentType, amount, bankAccountId }
   });
 
   if (error) throw error;
