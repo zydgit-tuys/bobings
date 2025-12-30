@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ChevronDown, ChevronRight } from 'lucide-react';
+import { GripVertical, ChevronDown, ChevronRight, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VirtualStockVariantRow } from './VirtualStockVariantRow';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,8 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
     return variants.sort((a, b) => (a.color_name || '').localeCompare(b.color_name || ''));
   }, [product.variants, sortBy]);
 
+  const firstImage = product.images?.[0];
+
   return (
     <div
       ref={setNodeRef}
@@ -67,13 +69,22 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
           >
             <GripVertical className="h-4 w-4 text-muted-foreground" />
           </button>
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
+          <div className="w-8 h-8 rounded overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+            {firstImage ? (
+              <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
+            ) : (
+              <Image className="h-3 w-3 text-muted-foreground" />
+            )}
+          </div>
         </div>
-        <div className="col-span-3 font-mono text-sm">{product.sku_master}</div>
+        <div className="col-span-3 font-mono text-sm flex items-center gap-2">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          {product.sku_master}
+        </div>
         <div className="col-span-5 font-medium">{product.name}</div>
         <div className="col-span-3 text-right font-semibold">{totalQty}</div>
       </div>
