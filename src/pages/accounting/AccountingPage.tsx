@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { ChartOfAccounts } from "./ChartOfAccounts";
 import { JournalEntries } from "./JournalEntries";
 import { TrialBalance } from "./TrialBalance";
+import { IncomeStatement } from "./IncomeStatement";
+import { BalanceSheet } from "./BalanceSheet";
 
 export default function AccountingPage() {
   const [activeTab, setActiveTab] = useState("coa");
@@ -12,7 +14,7 @@ export default function AccountingPage() {
     <div>
       <PageHeader
         title="Accounting"
-        description="Chart of accounts, journal entries, and reports"
+        description="Chart of accounts, journal entries, and financial reports"
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -20,6 +22,8 @@ export default function AccountingPage() {
           <TabsTrigger value="coa" className="text-xs md:text-sm">CoA</TabsTrigger>
           <TabsTrigger value="journals" className="text-xs md:text-sm">Journals</TabsTrigger>
           <TabsTrigger value="trial" className="text-xs md:text-sm">Trial Balance</TabsTrigger>
+          <TabsTrigger value="income" className="text-xs md:text-sm">Laba Rugi</TabsTrigger>
+          <TabsTrigger value="balance" className="text-xs md:text-sm">Neraca</TabsTrigger>
         </TabsList>
 
         <TabsContent value="coa">
@@ -32,6 +36,14 @@ export default function AccountingPage() {
 
         <TabsContent value="trial">
           <TrialBalance />
+        </TabsContent>
+
+        <TabsContent value="income">
+          <IncomeStatement />
+        </TabsContent>
+
+        <TabsContent value="balance">
+          <BalanceSheet />
         </TabsContent>
       </Tabs>
     </div>
