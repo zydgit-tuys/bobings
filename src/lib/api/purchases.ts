@@ -175,7 +175,32 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
         received_date: allReceived ? new Date().toISOString().split('T')[0] : null 
       })
       .eq('id', purchaseId);
+
+    // Trigger auto journal for receiving goods (only when fully or partially received)
+    if (someReceived) {
+      try {
+        await triggerAutoJournalPurchase(purchaseId, 'receive');
+      } catch (error) {
+        console.error('Auto journal failed:', error);
+        // Don't throw - journal failure shouldn't block receiving
+      }
+    }
   }
+}
+
+// Trigger auto journal for purchase transactions
+export async function triggerAutoJournalPurchase(
+  purchaseId: string, 
+  action: 'receive' | 'payment',
+  paymentMethod?: 'cash' | 'bank',
+  amount?: number
+) {
+  const { data, error } = await supabase.functions.invoke('auto-journal-purchase', {
+    body: { purchaseId, action, paymentMethod, amount }
+  });
+
+  if (error) throw error;
+  return data;
 }
 
 // Generate next purchase number
