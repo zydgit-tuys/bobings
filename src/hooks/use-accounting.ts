@@ -3,7 +3,7 @@ import {
   getChartOfAccounts, getAccount, createAccount,
   getJournalEntries, getJournalEntry, createJournalEntry,
   getTrialBalance, getIncomeStatement, getBalanceSheet,
-  getAccountingPeriods, createAccountingPeriod, closeAccountingPeriod
+  getAccountingPeriods, createAccountingPeriod, closeAccountingPeriod, reopenAccountingPeriod
 } from '@/lib/api/accounting';
 import type { ChartOfAccount } from '@/types';
 import { toast } from 'sonner';
@@ -133,6 +133,22 @@ export function useClosePeriod() {
     },
     onError: (error: Error) => {
       toast.error(`Gagal menutup periode: ${error.message}`);
+    },
+  });
+}
+
+export function useReopenPeriod() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ periodId, password }: { periodId: string; password: string }) => 
+      reopenAccountingPeriod(periodId, password),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });
+      toast.success('Periode berhasil dibuka kembali');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
     },
   });
 }

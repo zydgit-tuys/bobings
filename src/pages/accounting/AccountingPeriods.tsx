@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { format, startOfMonth, endOfMonth, parse, addMonths, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { id } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -22,21 +23,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAccountingPeriods, useCreatePeriod, useClosePeriod } from "@/hooks/use-accounting";
-import { Calendar, Plus, Lock, Download, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { useAccountingPeriods, useCreatePeriod, useClosePeriod, useReopenPeriod } from "@/hooks/use-accounting";
+import { Calendar, Plus, Lock, Download, FileText, ChevronLeft, ChevronRight, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { exportAllReports } from "@/lib/utils/export-reports";
 
 export function AccountingPeriods() {
   const [year, setYear] = useState(new Date().getFullYear());
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [showReopenDialog, setShowReopenDialog] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
 
   const { data: periods, isLoading } = useAccountingPeriods(year);
   const createPeriod = useCreatePeriod();
   const closePeriod = useClosePeriod();
+  const reopenPeriod = useReopenPeriod();
 
   // Generate all months for the year
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -61,7 +64,6 @@ export function AccountingPeriods() {
         end_date: month.endDate,
         status: 'open',
       });
-      setShowCreateDialog(false);
     } catch (error) {
       console.error(error);
     }
@@ -74,6 +76,22 @@ export function AccountingPeriods() {
       await closePeriod.mutateAsync(selectedPeriod.id);
       setShowCloseDialog(false);
       setSelectedPeriod(null);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleReopenPeriod = async () => {
+    if (!selectedPeriod || !adminPassword) return;
+    
+    try {
+      await reopenPeriod.mutateAsync({ 
+        periodId: selectedPeriod.id, 
+        password: adminPassword 
+      });
+      setShowReopenDialog(false);
+      setSelectedPeriod(null);
+      setAdminPassword("");
     } catch (error) {
       console.error(error);
     }
@@ -167,16 +185,28 @@ export function AccountingPeriods() {
                       </Button>
                     )}
                     {isClosed && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => handleExport(period)}
-                        disabled={isExporting}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Export
-                      </Button>
+                      <div className="flex gap-2 w-full">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleExport(period)}
+                          disabled={isExporting}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Export
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedPeriod(period);
+                            setShowReopenDialog(true);
+                          }}
+                        >
+                          <Unlock className="h-4 w-4" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -217,7 +247,7 @@ export function AccountingPeriods() {
                       Tertutup
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -225,7 +255,18 @@ export function AccountingPeriods() {
                       disabled={isExporting}
                     >
                       <Download className="h-4 w-4 mr-1" />
-                      Export Laporan
+                      Export
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedPeriod(period);
+                        setShowReopenDialog(true);
+                      }}
+                    >
+                      <Unlock className="h-4 w-4 mr-1" />
+                      Buka
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -268,6 +309,52 @@ export function AccountingPeriods() {
             >
               <Lock className="h-4 w-4 mr-1" />
               Tutup Periode
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reopen Period Dialog */}
+      <Dialog open={showReopenDialog} onOpenChange={(open) => {
+        setShowReopenDialog(open);
+        if (!open) setAdminPassword("");
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Buka Kembali Periode</DialogTitle>
+            <DialogDescription>
+              Anda akan membuka kembali periode <strong>{selectedPeriod?.period_name}</strong>. 
+              Masukkan password admin untuk melanjutkan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-password">Password Admin</Label>
+              <Input
+                id="admin-password"
+                type="password"
+                placeholder="Masukkan password admin"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Password default: admin123 (harap ganti segera)
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowReopenDialog(false);
+              setAdminPassword("");
+            }}>
+              Batal
+            </Button>
+            <Button 
+              onClick={handleReopenPeriod}
+              disabled={reopenPeriod.isPending || !adminPassword}
+            >
+              <Unlock className="h-4 w-4 mr-1" />
+              Buka Periode
             </Button>
           </DialogFooter>
         </DialogContent>
