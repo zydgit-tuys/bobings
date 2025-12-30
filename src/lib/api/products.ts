@@ -165,3 +165,106 @@ export async function createCategory(category: { name: string; parent_id?: strin
   if (error) throw error;
   return data;
 }
+
+// ============================================
+// VARIANT ATTRIBUTES API
+// ============================================
+
+export async function getVariantAttributes() {
+  const { data, error } = await supabase
+    .from('variant_attributes')
+    .select(`
+      *,
+      attribute_values(*)
+    `)
+    .order('name');
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createVariantAttribute(name: string) {
+  const { data, error } = await supabase
+    .from('variant_attributes')
+    .insert({ name })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVariantAttribute(id: string, name: string) {
+  const { data, error } = await supabase
+    .from('variant_attributes')
+    .update({ name })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteVariantAttribute(id: string) {
+  const { error } = await supabase
+    .from('variant_attributes')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+// ============================================
+// ATTRIBUTE VALUES API
+// ============================================
+
+export async function getAttributeValues(attributeId?: string) {
+  let query = supabase
+    .from('attribute_values')
+    .select(`
+      *,
+      variant_attributes(id, name)
+    `)
+    .order('sort_order');
+
+  if (attributeId) {
+    query = query.eq('attribute_id', attributeId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function createAttributeValue(value: { attribute_id: string; value: string; sort_order?: number }) {
+  const { data, error } = await supabase
+    .from('attribute_values')
+    .insert(value)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAttributeValue(id: string, value: { value?: string; sort_order?: number }) {
+  const { data, error } = await supabase
+    .from('attribute_values')
+    .update(value)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteAttributeValue(id: string) {
+  const { error } = await supabase
+    .from('attribute_values')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}

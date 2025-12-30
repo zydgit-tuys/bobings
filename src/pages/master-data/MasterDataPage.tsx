@@ -1,9 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { Package, Tag, FolderTree } from "lucide-react";
+import { Package, Tag, FolderTree, Palette } from "lucide-react";
 import ProductList from "@/pages/products/ProductList";
 import { BrandList } from "./BrandList";
 import { CategoryList } from "./CategoryList";
+import { VariantAttributeList } from "./VariantAttributeList";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function MasterDataPage() {
@@ -13,11 +14,11 @@ export default function MasterDataPage() {
     <div className="space-y-4 md:space-y-6">
       <PageHeader
         title="Master Data"
-        description="Manage products, brands, and categories"
+        description="Manage products, brands, categories, and variant attributes"
       />
 
       <Tabs defaultValue="products" className="w-full">
-        <TabsList className={`grid w-full ${isMobile ? 'grid-cols-3' : 'grid-cols-3 max-w-md'}`}>
+        <TabsList className={`grid w-full ${isMobile ? 'grid-cols-4' : 'grid-cols-4 max-w-lg'}`}>
           <TabsTrigger value="products" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             <span className={isMobile ? "sr-only sm:not-sr-only" : ""}>Products</span>
@@ -29,6 +30,10 @@ export default function MasterDataPage() {
           <TabsTrigger value="categories" className="flex items-center gap-2">
             <FolderTree className="h-4 w-4" />
             <span className={isMobile ? "sr-only sm:not-sr-only" : ""}>Categories</span>
+          </TabsTrigger>
+          <TabsTrigger value="attributes" className="flex items-center gap-2">
+            <Palette className="h-4 w-4" />
+            <span className={isMobile ? "sr-only sm:not-sr-only" : ""}>Attributes</span>
           </TabsTrigger>
         </TabsList>
 
@@ -42,6 +47,10 @@ export default function MasterDataPage() {
 
         <TabsContent value="categories" className="mt-4 md:mt-6">
           <CategoryList />
+        </TabsContent>
+
+        <TabsContent value="attributes" className="mt-4 md:mt-6">
+          <VariantAttributeList />
         </TabsContent>
       </Tabs>
     </div>
