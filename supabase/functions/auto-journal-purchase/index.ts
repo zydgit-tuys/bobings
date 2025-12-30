@@ -16,8 +16,7 @@ const ACCOUNTS = {
 
 interface PurchaseJournalRequest {
   purchaseId: string;
-  action: 'receive' | 'payment';
-  paymentMethod?: 'cash' | 'bank';
+  paymentType: 'cash' | 'bank' | 'hutang';
   amount?: number;
 }
 
@@ -33,11 +32,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { purchaseId, action, paymentMethod = 'bank', amount } = await req.json() as PurchaseJournalRequest;
+    const { purchaseId, paymentType, amount } = await req.json() as PurchaseJournalRequest;
 
-    if (!purchaseId || !action) {
+    if (!purchaseId || !paymentType) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing purchaseId or action' }),
+        JSON.stringify({ success: false, error: 'Missing purchaseId or paymentType' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -60,130 +59,97 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📦 Processing ${action} for purchase: ${purchase.purchase_no}`);
+    const supplier = purchase.suppliers as unknown as { name: string; code: string } | null;
+    const supplierName = supplier?.name || 'Unknown Supplier';
+    const journalAmount = amount || purchase.total_amount;
 
-    let journalEntry;
-    const journalLines: any[] = [];
+    console.log(`📦 Processing ${paymentType} payment for purchase: ${purchase.purchase_no}`);
 
-    if (action === 'receive') {
-      // Journal for receiving goods:
+    // Determine credit account based on payment type
+    let creditAccountId: string;
+    let creditAccountName: string;
+    let journalDescription: string;
+
+    switch (paymentType) {
+      case 'cash':
+        creditAccountId = ACCOUNTS.KAS;
+        creditAccountName = 'Kas';
+        journalDescription = `Pembelian tunai dari ${supplierName} - ${purchase.purchase_no}`;
+        break;
+      case 'bank':
+        creditAccountId = ACCOUNTS.BANK_BCA;
+        creditAccountName = 'Bank BCA';
+        journalDescription = `Pembelian transfer dari ${supplierName} - ${purchase.purchase_no}`;
+        break;
+      case 'hutang':
+        creditAccountId = ACCOUNTS.HUTANG_SUPPLIER;
+        creditAccountName = 'Hutang Supplier';
+        journalDescription = `Pembelian kredit dari ${supplierName} - ${purchase.purchase_no}`;
+        break;
+      default:
+        return new Response(
+          JSON.stringify({ success: false, error: 'Invalid payment type' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+    }
+
+    // Create journal entry
+    const { data: journalEntry, error: entryError } = await supabase
+      .from('journal_entries')
+      .insert({
+        entry_date: new Date().toISOString().split('T')[0],
+        reference_type: 'purchase',
+        reference_id: purchaseId,
+        description: journalDescription,
+      })
+      .select()
+      .single();
+
+    if (entryError) {
+      console.error('❌ Error creating journal entry:', entryError);
+      throw new Error(`Failed to create journal entry: ${entryError.message}`);
+    }
+
+    const journalLines = [
       // Debit: Persediaan (inventory increases)
-      // Credit: Hutang Supplier (liability increases)
-
-      const supplier = purchase.suppliers as unknown as { name: string; code: string } | null;
-      const supplierName = supplier?.name || 'Unknown Supplier';
-
-      // Create journal entry
-      const { data: entry, error: entryError } = await supabase
-        .from('journal_entries')
-        .insert({
-          entry_date: purchase.received_date || new Date().toISOString().split('T')[0],
-          reference_type: 'purchase',
-          reference_id: purchaseId,
-          description: `Penerimaan barang dari ${supplierName} - ${purchase.purchase_no}`,
-        })
-        .select()
-        .single();
-
-      if (entryError) {
-        console.error('❌ Error creating journal entry:', entryError);
-        throw new Error(`Failed to create journal entry: ${entryError.message}`);
-      }
-
-      journalEntry = entry;
-
-      // Debit: Persediaan
-      journalLines.push({
+      {
         entry_id: journalEntry.id,
         account_id: ACCOUNTS.PERSEDIAAN,
-        debit: purchase.total_amount,
+        debit: journalAmount,
         credit: 0,
-        description: `Penerimaan persediaan - ${purchase.purchase_no}`,
-      });
-
-      // Credit: Hutang Supplier
-      journalLines.push({
+        description: `Penambahan persediaan - ${purchase.purchase_no}`,
+      },
+      // Credit: Kas / Bank / Hutang (based on payment type)
+      {
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.HUTANG_SUPPLIER,
+        account_id: creditAccountId,
         debit: 0,
-        credit: purchase.total_amount,
-        description: `Hutang kepada ${supplierName}`,
-      });
-
-      console.log(`✅ Created receive journal: Debit Persediaan, Credit Hutang Supplier = ${purchase.total_amount}`);
-
-    } else if (action === 'payment') {
-      // Journal for payment:
-      // Debit: Hutang Supplier (liability decreases)
-      // Credit: Kas/Bank (asset decreases)
-
-      const paymentAmount = amount || purchase.total_amount;
-      const cashAccount = paymentMethod === 'cash' ? ACCOUNTS.KAS : ACCOUNTS.BANK_BCA;
-      const paymentDesc = paymentMethod === 'cash' ? 'Kas' : 'Bank BCA';
-
-      const supplier = purchase.suppliers as unknown as { name: string; code: string } | null;
-      const supplierName = supplier?.name || 'Unknown Supplier';
-
-      // Create journal entry
-      const { data: entry, error: entryError } = await supabase
-        .from('journal_entries')
-        .insert({
-          entry_date: new Date().toISOString().split('T')[0],
-          reference_type: 'purchase_payment',
-          reference_id: purchaseId,
-          description: `Pembayaran ke ${supplierName} - ${purchase.purchase_no}`,
-        })
-        .select()
-        .single();
-
-      if (entryError) {
-        console.error('❌ Error creating journal entry:', entryError);
-        throw new Error(`Failed to create journal entry: ${entryError.message}`);
-      }
-
-      journalEntry = entry;
-
-      // Debit: Hutang Supplier
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: ACCOUNTS.HUTANG_SUPPLIER,
-        debit: paymentAmount,
-        credit: 0,
-        description: `Pembayaran hutang - ${purchase.purchase_no}`,
-      });
-
-      // Credit: Kas/Bank
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: cashAccount,
-        debit: 0,
-        credit: paymentAmount,
-        description: `Pembayaran via ${paymentDesc}`,
-      });
-
-      console.log(`✅ Created payment journal: Debit Hutang, Credit ${paymentDesc} = ${paymentAmount}`);
-    }
+        credit: journalAmount,
+        description: `${creditAccountName} - ${purchase.purchase_no}`,
+      },
+    ];
 
     // Insert journal lines
-    if (journalLines.length > 0) {
-      const { error: linesError } = await supabase
-        .from('journal_lines')
-        .insert(journalLines);
+    const { error: linesError } = await supabase
+      .from('journal_lines')
+      .insert(journalLines);
 
-      if (linesError) {
-        console.error('❌ Error creating journal lines:', linesError);
-        throw new Error(`Failed to create journal lines: ${linesError.message}`);
-      }
+    if (linesError) {
+      console.error('❌ Error creating journal lines:', linesError);
+      throw new Error(`Failed to create journal lines: ${linesError.message}`);
     }
 
+    console.log(`✅ Created journal: Debit Persediaan, Credit ${creditAccountName} = Rp ${journalAmount.toLocaleString()}`);
     console.log(`🎉 Auto journal completed for purchase ${purchase.purchase_no}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        journalEntryId: journalEntry?.id,
-        action,
+        journalEntryId: journalEntry.id,
+        paymentType,
         purchaseNo: purchase.purchase_no,
+        amount: journalAmount,
+        journalDescription,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
