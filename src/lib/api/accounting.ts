@@ -273,3 +273,59 @@ export async function closeAccountingPeriod(periodId: string): Promise<Accountin
   if (error) throw error;
   return data as AccountingPeriod;
 }
+
+export async function reopenAccountingPeriod(periodId: string, password: string): Promise<AccountingPeriod> {
+  // Verify admin password
+  const { data: settings, error: settingsError } = await supabase
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', 'admin_password')
+    .single();
+
+  if (settingsError) throw new Error('Gagal verifikasi password');
+  
+  if (settings.setting_value !== password) {
+    throw new Error('Password admin salah');
+  }
+
+  // Reopen the period
+  const { data, error } = await supabase
+    .from('accounting_periods')
+    .update({
+      status: 'open',
+      closed_at: null,
+      notes: `Dibuka kembali pada ${new Date().toLocaleString('id-ID')}`,
+    })
+    .eq('id', periodId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as AccountingPeriod;
+}
+
+export async function verifyAdminPassword(password: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', 'admin_password')
+    .single();
+
+  if (error) return false;
+  return data.setting_value === password;
+}
+
+export async function updateAdminPassword(oldPassword: string, newPassword: string): Promise<void> {
+  // Verify old password first
+  const isValid = await verifyAdminPassword(oldPassword);
+  if (!isValid) {
+    throw new Error('Password lama salah');
+  }
+
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ setting_value: newPassword })
+    .eq('setting_key', 'admin_password');
+
+  if (error) throw error;
+}
