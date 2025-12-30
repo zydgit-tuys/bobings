@@ -34,6 +34,7 @@ import {
   useCategories,
 } from "@/hooks/use-products";
 import { ProductVariants } from "./ProductVariants";
+import { ProductImageUpload } from "@/components/products/ProductImageUpload";
 
 const productSchema = z.object({
   sku_master: z.string().min(1, "SKU is required"),
@@ -57,6 +58,7 @@ export default function ProductForm() {
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const [virtualStock, setVirtualStock] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -81,13 +83,14 @@ export default function ProductForm() {
         category_id: product.category_id ?? "",
       });
       setVirtualStock(product.virtual_stock ?? false);
+      setImages(product.images ?? []);
     }
   }, [product, form]);
 
   const onSubmit = (data: ProductFormData) => {
     if (isEdit) {
       updateProduct.mutate(
-        { id, data: { ...data, brand_id: data.brand_id || null, category_id: data.category_id || null, virtual_stock: virtualStock } },
+        { id, data: { ...data, brand_id: data.brand_id || null, category_id: data.category_id || null, virtual_stock: virtualStock, images } },
         { onSuccess: () => navigate("/products") }
       );
     } else {
@@ -266,7 +269,23 @@ export default function ProductForm() {
           </CardContent>
         </Card>
 
-        {isEdit && <ProductVariants productId={id} />}
+        {isEdit && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Images</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ProductImageUpload
+                  productId={id}
+                  images={images}
+                  onImagesChange={setImages}
+                />
+              </CardContent>
+            </Card>
+            <ProductVariants productId={id} />
+          </div>
+        )}
       </div>
     </div>
   );
