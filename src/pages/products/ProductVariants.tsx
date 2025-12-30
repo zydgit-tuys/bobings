@@ -93,67 +93,62 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
   };
 
   const columns = [
-    { key: "sku_variant", header: "SKU Variant" },
+    { key: "sku_variant", header: "SKU" },
     {
       key: "price",
-      header: "Price",
-      render: (item: any) => `Rp ${item.price.toLocaleString()}`,
+      header: "Harga",
+      render: (item: any) => `Rp ${item.price.toLocaleString('id-ID')}`,
     },
-    {
-      key: "hpp",
-      header: "HPP",
-      render: (item: any) => `Rp ${item.hpp.toLocaleString()}`,
-    },
-    { key: "stock_qty", header: "Stock" },
-    { key: "min_stock_alert", header: "Min Stock" },
+    { key: "stock_qty", header: "Stok" },
   ];
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Product Variants</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between p-3 md:p-6">
+        <CardTitle className="text-sm md:text-base">Variant</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button
               size="sm"
+              className="h-7 text-xs md:h-9 md:text-sm"
               onClick={() => {
                 setEditId(null);
                 form.reset();
               }}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Variant
+              <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+              Tambah
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-sm mx-2">
             <DialogHeader>
-              <DialogTitle>{editId ? "Edit Variant" : "Add Variant"}</DialogTitle>
+              <DialogTitle className="text-base">{editId ? "Edit Variant" : "Tambah Variant"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
                 <FormField
                   control={form.control}
                   name="sku_variant"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>SKU Variant</FormLabel>
+                      <FormLabel className="text-xs">SKU Variant</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="e.g., PROD-001-BLK-M" />
+                        <Input {...field} placeholder="PROD-001-BLK-M" className="h-9 text-sm" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <FormField
                     control={form.control}
                     name="price"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Price (Rp)</FormLabel>
+                        <FormLabel className="text-xs">Harga (Rp)</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" min={0} />
+                          <Input {...field} type="number" min={0} className="h-9 text-sm" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -165,9 +160,9 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
                     name="hpp"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>HPP (Rp)</FormLabel>
+                        <FormLabel className="text-xs">HPP (Rp)</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" min={0} />
+                          <Input {...field} type="number" min={0} className="h-9 text-sm" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -175,15 +170,15 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <FormField
                     control={form.control}
                     name="stock_qty"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Stock Qty</FormLabel>
+                        <FormLabel className="text-xs">Stok</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" min={0} />
+                          <Input {...field} type="number" min={0} className="h-9 text-sm" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -195,9 +190,9 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
                     name="min_stock_alert"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Min Stock Alert</FormLabel>
+                        <FormLabel className="text-xs">Min Stok</FormLabel>
                         <FormControl>
-                          <Input {...field} type="number" min={0} />
+                          <Input {...field} type="number" min={0} className="h-9 text-sm" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -207,22 +202,23 @@ export function ProductVariants({ productId }: ProductVariantsProps) {
 
                 <Button
                   type="submit"
+                  size="sm"
                   className="w-full"
                   disabled={createVariant.isPending || updateVariant.isPending}
                 >
-                  {editId ? "Update Variant" : "Add Variant"}
+                  {editId ? "Update" : "Simpan"}
                 </Button>
               </form>
             </Form>
           </DialogContent>
         </Dialog>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-2 md:p-6 pt-0">
         <DataTable
           columns={columns}
           data={variants ?? []}
           isLoading={isLoading}
-          emptyMessage="No variants yet"
+          emptyMessage="Belum ada variant"
           onRowClick={handleEdit}
         />
       </CardContent>
