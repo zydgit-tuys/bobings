@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "@/components/shared/DataTable";
-import { MobileCardList } from "@/components/shared/MobileCardList";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useCategories, useCreateCategory } from "@/hooks/use-products";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -27,7 +25,6 @@ import {
 import { Label } from "@/components/ui/label";
 
 export function CategoryList() {
-  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { data: categories, isLoading } = useCategories();
   const createCategory = useCreateCategory();
@@ -37,6 +34,11 @@ export function CategoryList() {
   const [categoryName, setCategoryName] = useState("");
   const [parentId, setParentId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredCategories = (categories ?? []).filter((c: any) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   const getParentName = (parentId: string | null) => {
     if (!parentId) return "-";
@@ -45,26 +47,29 @@ export function CategoryList() {
   };
 
   const columns = [
-    { key: "name", header: "Category Name" },
+    { key: "name", header: "Category Name", primary: true },
     {
       key: "parent_id",
       header: "Parent",
+      hideOnMobile: true,
       render: (item: any) => getParentName(item.parent_id),
     },
-    { key: "level", header: "Level" },
+    { key: "level", header: "Level", hideOnMobile: true },
     {
       key: "created_at",
       header: "Created",
+      hideOnMobile: true,
       render: (item: any) => new Date(item.created_at).toLocaleDateString("id-ID"),
     },
     {
       key: "actions",
       header: "",
       render: (item: any) => (
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-1 justify-end">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={(e) => {
               e.stopPropagation();
               handleEdit(item);
@@ -74,7 +79,8 @@ export function CategoryList() {
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={(e) => {
               e.stopPropagation();
               setDeleteId(item.id);
@@ -86,6 +92,42 @@ export function CategoryList() {
       ),
     },
   ];
+
+  const mobileCardRender = (category: any) => (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="font-medium">{category.name}</p>
+        <div className="flex gap-2 text-xs text-muted-foreground">
+          <span>Parent: {getParentName(category.parent_id)}</span>
+          <span>Level: {category.level}</span>
+        </div>
+      </div>
+      <div className="flex gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleEdit(category);
+          }}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDeleteId(category.id);
+          }}
+        >
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+    </div>
+  );
 
   const handleEdit = (category: any) => {
     setEditingCategory(category);
@@ -153,55 +195,33 @@ export function CategoryList() {
     }
   };
 
-  const renderCategoryCard = (category: any) => (
-    <div className="p-4">
-      <p className="font-medium text-foreground">{category.name}</p>
-      <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-        <span>Parent: {getParentName(category.parent_id)}</span>
-        <span>Level: {category.level}</span>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={handleAdd} size={isMobile ? "sm" : "default"}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Category
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Cari kategori..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 h-9 text-sm"
+          />
+        </div>
+        <Button onClick={handleAdd} size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">Tambah</span>
+          <span className="sm:hidden">+</span>
         </Button>
       </div>
 
-      {isMobile ? (
-        <MobileCardList
-          data={categories ?? []}
-          isLoading={isLoading}
-          emptyMessage="No categories found."
-          renderCard={renderCategoryCard}
-          leftActions={[
-            {
-              icon: <Pencil className="h-5 w-5" />,
-              label: "Edit",
-              onClick: handleEdit,
-            },
-          ]}
-          rightActions={[
-            {
-              icon: <Trash2 className="h-5 w-5" />,
-              label: "Delete",
-              onClick: (item) => setDeleteId(item.id),
-              variant: "destructive",
-            },
-          ]}
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={categories ?? []}
-          isLoading={isLoading}
-          emptyMessage="No categories found."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={filteredCategories}
+        isLoading={isLoading}
+        emptyMessage="No categories found."
+        onRowClick={handleEdit}
+        mobileCardRender={mobileCardRender}
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
