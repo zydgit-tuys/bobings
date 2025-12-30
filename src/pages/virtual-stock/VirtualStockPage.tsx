@@ -19,22 +19,25 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { VirtualStockProductRow } from './VirtualStockProductRow';
 import { useVirtualStockProducts, useUpdateProductsSortOrder } from '@/hooks/use-virtual-stock';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Package, ArrowUpDown, Check } from 'lucide-react';
 
 export default function VirtualStockPage() {
   const { data: products, isLoading } = useVirtualStockProducts();
   const updateSortOrder = useUpdateProductsSortOrder();
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [localOrder, setLocalOrder] = useState<string[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 200,
+        delay: 100,
         tolerance: 5,
       },
     }),
@@ -45,24 +48,52 @@ export default function VirtualStockPage() {
 
   const sortedProducts = useMemo(() => {
     if (!products) return [];
-    return [...products].sort((a, b) => a.sort_order - b.sort_order);
-  }, [products]);
+    const sorted = [...products].sort((a, b) => a.sort_order - b.sort_order);
+    
+    // If in reorder mode and we have local order, use that
+    if (isReorderMode && localOrder.length > 0) {
+      return localOrder
+        .map(id => sorted.find(p => p.id === id))
+        .filter(Boolean) as typeof sorted;
+    }
+    
+    return sorted;
+  }, [products, isReorderMode, localOrder]);
+
+  const handleEnterReorderMode = () => {
+    setIsReorderMode(true);
+    setLocalOrder(sortedProducts.map(p => p.id));
+    setExpandedProducts(new Set()); // Collapse all when reordering
+  };
+
+  const handleSaveReorder = () => {
+    const updates = localOrder.map((id, idx) => ({ id, sort_order: idx }));
+    updateSortOrder.mutate(updates, {
+      onSuccess: () => {
+        setIsReorderMode(false);
+        setLocalOrder([]);
+      }
+    });
+  };
+
+  const handleCancelReorder = () => {
+    setIsReorderMode(false);
+    setLocalOrder([]);
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = sortedProducts.findIndex((p) => p.id === active.id);
-      const newIndex = sortedProducts.findIndex((p) => p.id === over.id);
-
-      const reordered = arrayMove(sortedProducts, oldIndex, newIndex);
-      const updates = reordered.map((p, idx) => ({ id: p.id, sort_order: idx }));
-
-      updateSortOrder.mutate(updates);
+      const oldIndex = localOrder.indexOf(active.id as string);
+      const newIndex = localOrder.indexOf(over.id as string);
+      setLocalOrder(arrayMove(localOrder, oldIndex, newIndex));
     }
   };
 
   const toggleExpand = (productId: string) => {
+    if (isReorderMode) return; // Disable expand in reorder mode
+    
     setExpandedProducts((prev) => {
       const next = new Set(prev);
       if (next.has(productId)) {
@@ -102,7 +133,28 @@ export default function VirtualStockPage() {
 
   return (
     <div className="space-y-3">
-      <PageHeader title="Virtual Stock" description="Drag to reorder" />
+      <PageHeader 
+        title="Virtual Stock" 
+        description={isReorderMode ? "Drag to reorder" : "Supplier warehouse"}
+        action={
+          isReorderMode ? (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={handleCancelReorder}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSaveReorder} disabled={updateSortOrder.isPending}>
+                <Check className="h-3.5 w-3.5 mr-1" />
+                Save
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleEnterReorderMode}>
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
+              Reorder
+            </Button>
+          )
+        }
+      />
 
       <div className="bg-card border rounded-lg overflow-hidden">
         {/* Header - hidden on mobile, show on md+ */}
@@ -113,26 +165,38 @@ export default function VirtualStockPage() {
           <div className="col-span-3 text-right">Total</div>
         </div>
 
-        {/* Draggable list */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={sortedProducts.map((p) => p.id)}
-            strategy={verticalListSortingStrategy}
+        {isReorderMode ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            {sortedProducts.map((product) => (
-              <VirtualStockProductRow
-                key={product.id}
-                product={product}
-                isExpanded={expandedProducts.has(product.id)}
-                onToggleExpand={() => toggleExpand(product.id)}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={localOrder}
+              strategy={verticalListSortingStrategy}
+            >
+              {sortedProducts.map((product) => (
+                <VirtualStockProductRow
+                  key={product.id}
+                  product={product}
+                  isExpanded={false}
+                  onToggleExpand={() => {}}
+                  isReorderMode={true}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          sortedProducts.map((product) => (
+            <VirtualStockProductRow
+              key={product.id}
+              product={product}
+              isExpanded={expandedProducts.has(product.id)}
+              onToggleExpand={() => toggleExpand(product.id)}
+              isReorderMode={false}
+            />
+          ))
+        )}
       </div>
     </div>
   );

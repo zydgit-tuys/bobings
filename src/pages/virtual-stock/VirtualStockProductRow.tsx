@@ -5,17 +5,18 @@ import { GripVertical, ChevronDown, ChevronRight, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VirtualStockVariantRow } from './VirtualStockVariantRow';
 import { Button } from '@/components/ui/button';
-import type { VirtualStockProduct, VirtualStockVariant } from '@/lib/api/virtual-stock';
+import type { VirtualStockProduct } from '@/lib/api/virtual-stock';
 
 interface Props {
   product: VirtualStockProduct;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  isReorderMode?: boolean;
 }
 
 type SortKey = 'size' | 'color';
 
-export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: Props) {
+export function VirtualStockProductRow({ product, isExpanded, onToggleExpand, isReorderMode = false }: Props) {
   const [sortBy, setSortBy] = useState<SortKey>('size');
 
   const {
@@ -25,7 +26,7 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: product.id });
+  } = useSortable({ id: product.id, disabled: !isReorderMode });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -46,34 +47,61 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
 
   const firstImage = product.images?.[0];
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        'border-b last:border-b-0',
-        isDragging && 'opacity-50 bg-muted'
-      )}
-    >
-      {/* Parent row - mobile optimized */}
+  // Reorder mode - simplified row with drag handle
+  if (isReorderMode) {
+    return (
       <div
-        className="flex items-center gap-2 px-2 py-2 md:grid md:grid-cols-12 md:gap-2 md:px-3 md:py-2 hover:bg-muted/30 cursor-pointer"
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          'flex items-center gap-3 px-3 py-3 border-b last:border-b-0 bg-card',
+          isDragging && 'opacity-50 bg-muted shadow-lg'
+        )}
+      >
+        {/* Drag handle - always visible in reorder mode */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none"
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </button>
+
+        {/* Image thumbnail */}
+        <div className="w-10 h-10 rounded overflow-hidden bg-muted flex items-center justify-center shrink-0">
+          {firstImage ? (
+            <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            <Image className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+
+        {/* Product info */}
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-xs text-muted-foreground truncate">{product.sku_master}</div>
+          <div className="text-sm font-medium truncate">{product.name}</div>
+        </div>
+
+        {/* Total qty */}
+        <div className="text-right font-semibold text-sm shrink-0">{totalQty}</div>
+      </div>
+    );
+  }
+
+  // Normal mode - expandable row
+  return (
+    <div className="border-b last:border-b-0">
+      {/* Parent row */}
+      <div
+        className="flex items-center gap-2 px-2 py-2 hover:bg-muted/30 cursor-pointer"
         onClick={onToggleExpand}
       >
-        {/* Drag handle + expand icon */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab hover:bg-muted rounded p-0.5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
+        {/* Expand icon */}
+        <div className="shrink-0">
           {isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
           )}
         </div>
 
@@ -86,14 +114,14 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
           )}
         </div>
 
-        {/* Mobile: SKU + Name stacked, Desktop: grid layout */}
-        <div className="flex-1 min-w-0 md:contents">
-          <div className="md:col-span-3 font-mono text-xs truncate">{product.sku_master}</div>
-          <div className="md:col-span-5 text-xs md:text-sm font-medium truncate md:block hidden">{product.name}</div>
+        {/* Product info */}
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-xs text-muted-foreground truncate">{product.sku_master}</div>
+          <div className="text-sm font-medium truncate hidden md:block">{product.name}</div>
         </div>
 
         {/* Total qty */}
-        <div className="text-right font-semibold text-sm md:col-span-3 shrink-0 min-w-[40px]">{totalQty}</div>
+        <div className="text-right font-semibold text-sm shrink-0 min-w-[40px]">{totalQty}</div>
       </div>
 
       {/* Expanded variants */}
@@ -106,7 +134,7 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
               variant={sortBy === 'size' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-5 text-xs px-2"
-              onClick={() => setSortBy('size')}
+              onClick={(e) => { e.stopPropagation(); setSortBy('size'); }}
             >
               Size
             </Button>
@@ -114,13 +142,13 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
               variant={sortBy === 'color' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-5 text-xs px-2"
-              onClick={() => setSortBy('color')}
+              onClick={(e) => { e.stopPropagation(); setSortBy('color'); }}
             >
               Color
             </Button>
           </div>
 
-          {/* Variant rows - no header on mobile for compactness */}
+          {/* Variant rows */}
           {sortedVariants.map((variant) => (
             <VirtualStockVariantRow key={variant.id} variant={variant} />
           ))}
