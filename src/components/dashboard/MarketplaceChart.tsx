@@ -9,6 +9,7 @@ import {
   Tooltip,
   Legend
 } from "recharts";
+import { ChartEmptyState } from "./EmptyState";
 
 const COLORS = [
   'hsl(var(--primary))',
@@ -47,6 +48,7 @@ export function MarketplaceChart({ days = 30 }: MarketplaceChartProps) {
   })) || [];
 
   const total = chartData.reduce((sum, d) => sum + d.value, 0);
+  const hasData = chartData.length > 0;
 
   return (
     <Card>
@@ -54,48 +56,55 @@ export function MarketplaceChart({ days = 30 }: MarketplaceChartProps) {
         <CardTitle className="text-sm md:text-base">Revenue per Marketplace</CardTitle>
       </CardHeader>
       <CardContent className="p-2 pt-0 md:p-4 md:pt-0">
-        <div className="h-48 md:h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius="40%"
-                outerRadius="70%"
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {chartData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={COLORS[index % COLORS.length]}
-                    className="stroke-background"
-                    strokeWidth={2}
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  fontSize: '12px'
-                }}
-                formatter={(value: number) => [`Rp ${value.toLocaleString('id-ID')}`, 'Revenue']}
-              />
-              <Legend 
-                wrapperStyle={{ fontSize: '10px' }}
-                iconSize={8}
-                formatter={(value, entry) => {
-                  const item = chartData.find(d => d.name === value);
-                  const percent = total > 0 ? ((item?.value || 0) / total * 100).toFixed(0) : 0;
-                  return `${value} (${percent}%)`;
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+        {!hasData ? (
+          <ChartEmptyState 
+            title="Belum ada data marketplace" 
+            description="Data muncul setelah import penjualan"
+          />
+        ) : (
+          <div className="h-48 md:h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="40%"
+                  outerRadius="70%"
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={COLORS[index % COLORS.length]}
+                      className="stroke-background"
+                      strokeWidth={2}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    fontSize: '12px'
+                  }}
+                  formatter={(value: number) => [`Rp ${value.toLocaleString('id-ID')}`, 'Revenue']}
+                />
+                <Legend 
+                  wrapperStyle={{ fontSize: '10px' }}
+                  iconSize={8}
+                  formatter={(value) => {
+                    const item = chartData.find(d => d.name === value);
+                    const percent = total > 0 ? ((item?.value || 0) / total * 100).toFixed(0) : 0;
+                    return `${value} (${percent}%)`;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

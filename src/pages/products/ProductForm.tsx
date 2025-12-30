@@ -124,7 +124,7 @@ export default function ProductForm() {
         }
       />
 
-      <div className="grid gap-3 md:gap-6 lg:grid-cols-2">
+      <div className="grid gap-3 md:gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle>Product Details</CardTitle>

@@ -22,6 +22,7 @@ import { MarketplaceChart } from "@/components/dashboard/MarketplaceChart";
 import { TopProductsTable } from "@/components/dashboard/TopProductsTable";
 import { ProfitBreakdown } from "@/components/dashboard/ProfitBreakdown";
 import { InventoryOverview } from "@/components/dashboard/InventoryOverview";
+import { DashboardEmptyState } from "@/components/dashboard/EmptyState";
 
 type Period = 'today' | 'week' | 'month' | 'year';
 
@@ -49,6 +50,8 @@ export default function Dashboard() {
     return `Rp ${value}`;
   };
 
+  const hasNoSalesData = !loadingSales && (!salesOrders || salesOrders.length === 0);
+
   return (
     <div className="space-y-4">
       <PageHeader 
@@ -65,6 +68,9 @@ export default function Dashboard() {
           <TabsTrigger value="year" className="text-xs md:text-sm">1 Tahun</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {/* Empty State - Show when no sales data */}
+      {hasNoSalesData && <DashboardEmptyState />}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">

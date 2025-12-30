@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfitAnalysis } from "@/hooks/use-dashboard";
 import { Progress } from "@/components/ui/progress";
+import { TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface ProfitBreakdownProps {
   days?: number;
@@ -24,6 +26,8 @@ export function ProfitBreakdown({ days = 30 }: ProfitBreakdownProps) {
   }
 
   if (!data) return null;
+
+  const hasData = data.revenue > 0;
 
   const items = [
     { 
@@ -55,37 +59,49 @@ export function ProfitBreakdown({ days = 30 }: ProfitBreakdownProps) {
         </div>
       </CardHeader>
       <CardContent className="p-3 pt-0 md:p-4 md:pt-0 space-y-3">
-        <div className="text-center pb-2 border-b">
-          <p className="text-xs text-muted-foreground">Total Revenue</p>
-          <p className="text-lg md:text-xl font-bold">
-            Rp {data.revenue.toLocaleString('id-ID')}
-          </p>
-        </div>
-        
-        {items.map((item) => (
-          <div key={item.label} className="space-y-1">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">{item.label}</span>
-              <span className="font-medium">
-                {item.percent.toFixed(1)}% • Rp {item.value.toLocaleString('id-ID')}
-              </span>
+        {!hasData ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <TrendingUp className="h-8 w-8 text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground">Belum ada revenue</p>
+            <Link to="/sales" className="text-xs text-primary hover:underline mt-1">
+              Import penjualan →
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div className="text-center pb-2 border-b">
+              <p className="text-xs text-muted-foreground">Total Revenue</p>
+              <p className="text-lg md:text-xl font-bold">
+                Rp {data.revenue.toLocaleString('id-ID')}
+              </p>
             </div>
-            <Progress 
-              value={item.percent} 
-              className="h-2"
-              indicatorClassName={item.color}
-            />
-          </div>
-        ))}
+            
+            {items.map((item) => (
+              <div key={item.label} className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <span className="font-medium">
+                    {item.percent.toFixed(1)}% • Rp {item.value.toLocaleString('id-ID')}
+                  </span>
+                </div>
+                <Progress 
+                  value={item.percent} 
+                  className="h-2"
+                  indicatorClassName={item.color}
+                />
+              </div>
+            ))}
 
-        <div className="pt-2 border-t">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-medium">Margin Profit</span>
-            <span className={`text-sm font-bold ${data.marginPercent >= 20 ? 'text-emerald-500' : data.marginPercent >= 10 ? 'text-amber-500' : 'text-destructive'}`}>
-              {data.marginPercent.toFixed(1)}%
-            </span>
-          </div>
-        </div>
+            <div className="pt-2 border-t">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium">Margin Profit</span>
+                <span className={`text-sm font-bold ${data.marginPercent >= 20 ? 'text-emerald-500' : data.marginPercent >= 10 ? 'text-amber-500' : 'text-destructive'}`}>
+                  {data.marginPercent.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
