@@ -208,3 +208,68 @@ export async function getBalanceSheet(asOfDate: string) {
     },
   };
 }
+
+// ============================================
+// ACCOUNTING PERIODS API
+// ============================================
+
+export interface AccountingPeriod {
+  id: string;
+  period_name: string;
+  start_date: string;
+  end_date: string;
+  status: 'open' | 'closed';
+  closed_at: string | null;
+  closed_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getAccountingPeriods(year?: number): Promise<AccountingPeriod[]> {
+  let query = supabase
+    .from('accounting_periods')
+    .select('*')
+    .order('start_date', { ascending: false });
+
+  if (year) {
+    query = query
+      .gte('start_date', `${year}-01-01`)
+      .lte('end_date', `${year}-12-31`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as AccountingPeriod[];
+}
+
+export async function createAccountingPeriod(period: {
+  period_name: string;
+  start_date: string;
+  end_date: string;
+  status: 'open' | 'closed';
+}): Promise<AccountingPeriod> {
+  const { data, error } = await supabase
+    .from('accounting_periods')
+    .insert(period)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as AccountingPeriod;
+}
+
+export async function closeAccountingPeriod(periodId: string): Promise<AccountingPeriod> {
+  const { data, error } = await supabase
+    .from('accounting_periods')
+    .update({
+      status: 'closed',
+      closed_at: new Date().toISOString(),
+    })
+    .eq('id', periodId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as AccountingPeriod;
+}

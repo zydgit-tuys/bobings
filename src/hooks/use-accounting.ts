@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getChartOfAccounts, getAccount, createAccount,
   getJournalEntries, getJournalEntry, createJournalEntry,
-  getTrialBalance, getIncomeStatement, getBalanceSheet
+  getTrialBalance, getIncomeStatement, getBalanceSheet,
+  getAccountingPeriods, createAccountingPeriod, closeAccountingPeriod
 } from '@/lib/api/accounting';
 import type { ChartOfAccount } from '@/types';
 import { toast } from 'sonner';
@@ -95,5 +96,43 @@ export function useBalanceSheet(asOfDate: string) {
     queryKey: ['balance-sheet', asOfDate],
     queryFn: () => getBalanceSheet(asOfDate),
     enabled: !!asOfDate,
+  });
+}
+
+// Accounting Periods
+export function useAccountingPeriods(year?: number) {
+  return useQuery({
+    queryKey: ['accounting-periods', year],
+    queryFn: () => getAccountingPeriods(year),
+  });
+}
+
+export function useCreatePeriod() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createAccountingPeriod,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });
+      toast.success('Periode berhasil dibuat');
+    },
+    onError: (error: Error) => {
+      toast.error(`Gagal membuat periode: ${error.message}`);
+    },
+  });
+}
+
+export function useClosePeriod() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: closeAccountingPeriod,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });
+      toast.success('Periode berhasil ditutup');
+    },
+    onError: (error: Error) => {
+      toast.error(`Gagal menutup periode: ${error.message}`);
+    },
   });
 }
