@@ -55,50 +55,57 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
         isDragging && 'opacity-50 bg-muted'
       )}
     >
-      {/* Parent row */}
+      {/* Parent row - mobile optimized */}
       <div
-        className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-muted/30 cursor-pointer"
+        className="flex items-center gap-2 px-2 py-2 md:grid md:grid-cols-12 md:gap-2 md:px-3 md:py-2 hover:bg-muted/30 cursor-pointer"
         onClick={onToggleExpand}
       >
-        <div className="col-span-1 flex items-center gap-2">
+        {/* Drag handle + expand icon */}
+        <div className="flex items-center gap-1 shrink-0">
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab hover:bg-muted rounded p-1"
+            className="cursor-grab hover:bg-muted rounded p-0.5"
             onClick={(e) => e.stopPropagation()}
           >
-            <GripVertical className="h-4 w-4 text-muted-foreground" />
+            <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
-          <div className="w-8 h-8 rounded overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
-            {firstImage ? (
-              <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
-            ) : (
-              <Image className="h-3 w-3 text-muted-foreground" />
-            )}
-          </div>
-        </div>
-        <div className="col-span-3 font-mono text-sm flex items-center gap-2">
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           )}
-          {product.sku_master}
         </div>
-        <div className="col-span-5 font-medium">{product.name}</div>
-        <div className="col-span-3 text-right font-semibold">{totalQty}</div>
+
+        {/* Image thumbnail */}
+        <div className="w-8 h-8 rounded overflow-hidden bg-muted flex items-center justify-center shrink-0">
+          {firstImage ? (
+            <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            <Image className="h-3 w-3 text-muted-foreground" />
+          )}
+        </div>
+
+        {/* Mobile: SKU + Name stacked, Desktop: grid layout */}
+        <div className="flex-1 min-w-0 md:contents">
+          <div className="md:col-span-3 font-mono text-xs truncate">{product.sku_master}</div>
+          <div className="md:col-span-5 text-xs md:text-sm font-medium truncate md:block hidden">{product.name}</div>
+        </div>
+
+        {/* Total qty */}
+        <div className="text-right font-semibold text-sm md:col-span-3 shrink-0 min-w-[40px]">{totalQty}</div>
       </div>
 
       {/* Expanded variants */}
       {isExpanded && (
         <div className="bg-muted/20 border-t">
           {/* Sort controls */}
-          <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground border-b bg-muted/30">
-            <span>Sort by:</span>
+          <div className="flex items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground border-b bg-muted/30">
+            <span>Sort:</span>
             <Button
               variant={sortBy === 'size' ? 'secondary' : 'ghost'}
               size="sm"
-              className="h-6 text-xs"
+              className="h-5 text-xs px-2"
               onClick={() => setSortBy('size')}
             >
               Size
@@ -106,30 +113,21 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand }: 
             <Button
               variant={sortBy === 'color' ? 'secondary' : 'ghost'}
               size="sm"
-              className="h-6 text-xs"
+              className="h-5 text-xs px-2"
               onClick={() => setSortBy('color')}
             >
               Color
             </Button>
           </div>
 
-          {/* Variant header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
-            <div className="col-span-1"></div>
-            <div className="col-span-3">Variant SKU</div>
-            <div className="col-span-2">Color</div>
-            <div className="col-span-2">Size</div>
-            <div className="col-span-4 text-right">Qty</div>
-          </div>
-
-          {/* Variant rows */}
+          {/* Variant rows - no header on mobile for compactness */}
           {sortedVariants.map((variant) => (
             <VirtualStockVariantRow key={variant.id} variant={variant} />
           ))}
 
           {sortedVariants.length === 0 && (
-            <div className="px-4 py-4 text-sm text-muted-foreground text-center">
-              No variants found
+            <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+              No variants
             </div>
           )}
         </div>

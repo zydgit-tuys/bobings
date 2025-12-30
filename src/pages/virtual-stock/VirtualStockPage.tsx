@@ -65,11 +65,11 @@ export default function VirtualStockPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-4">
-        <PageHeader title="Virtual Stock" description="Monitor supplier warehouse stock" />
-        <div className="space-y-3">
+      <div className="space-y-3">
+        <PageHeader title="Virtual Stock" description="Supplier warehouse" />
+        <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-16 w-full" />
+            <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       </div>
@@ -78,28 +78,28 @@ export default function VirtualStockPage() {
 
   if (!sortedProducts.length) {
     return (
-      <div className="p-6 space-y-4">
-        <PageHeader title="Virtual Stock" description="Monitor supplier warehouse stock" />
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <Package className="h-12 w-12 mb-4" />
-          <p>No products with virtual stock enabled.</p>
-          <p className="text-sm">Enable virtual stock on a product to track supplier inventory.</p>
+      <div className="space-y-3">
+        <PageHeader title="Virtual Stock" description="Supplier warehouse" />
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <Package className="h-10 w-10 mb-3" />
+          <p className="text-sm">No products with virtual stock.</p>
+          <p className="text-xs">Enable on product detail page.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <PageHeader title="Virtual Stock" description="Monitor supplier warehouse stock - drag to reorder" />
+    <div className="space-y-3">
+      <PageHeader title="Virtual Stock" description="Drag to reorder" />
 
       <div className="bg-card border rounded-lg overflow-hidden">
-        {/* Header */}
-        <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-muted/50 border-b text-sm font-medium text-muted-foreground">
+        {/* Header - hidden on mobile, show on md+ */}
+        <div className="hidden md:grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 border-b text-xs font-medium text-muted-foreground">
           <div className="col-span-1"></div>
-          <div className="col-span-3">Parent SKU</div>
-          <div className="col-span-5">Product Name</div>
-          <div className="col-span-3 text-right">Total Qty</div>
+          <div className="col-span-3">SKU</div>
+          <div className="col-span-5">Product</div>
+          <div className="col-span-3 text-right">Total</div>
         </div>
 
         {/* Draggable list */}

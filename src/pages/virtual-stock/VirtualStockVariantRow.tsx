@@ -44,14 +44,21 @@ export function VirtualStockVariantRow({ variant }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-12 gap-2 px-4 py-2 items-center hover:bg-muted/50 text-sm">
-      <div className="col-span-1"></div>
-      <div className="col-span-3 font-mono text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50 text-xs border-b last:border-b-0">
+      {/* SKU - truncated */}
+      <div className="font-mono text-muted-foreground truncate w-20 md:w-28 shrink-0">
         {variant.sku_variant}
       </div>
-      <div className="col-span-2">{variant.color_name || '-'}</div>
-      <div className="col-span-2">{variant.size_name || '-'}</div>
-      <div className="col-span-4 flex justify-end">
+      
+      {/* Color + Size combined on mobile */}
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        <span className="truncate">{variant.color_name || '-'}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="truncate">{variant.size_name || '-'}</span>
+      </div>
+      
+      {/* Qty - editable */}
+      <div className="shrink-0">
         {isEditing ? (
           <Input
             ref={inputRef}
@@ -61,12 +68,12 @@ export function VirtualStockVariantRow({ variant }: Props) {
             onChange={(e) => setQty(e.target.value)}
             onBlur={handleSave}
             onKeyDown={handleKeyDown}
-            className="w-20 h-8 text-right"
+            className="w-14 h-7 text-right text-xs"
           />
         ) : (
           <button
             onClick={() => setIsEditing(true)}
-            className="px-3 py-1 rounded hover:bg-muted font-medium min-w-[60px] text-right"
+            className="px-2 py-1 rounded hover:bg-muted font-semibold min-w-[40px] text-right"
           >
             {variant.virtual_stock_qty}
           </button>
