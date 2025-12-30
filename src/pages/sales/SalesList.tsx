@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { FileUp } from "lucide-react";
+import { FileUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,10 +15,12 @@ import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useSalesOrders } from "@/hooks/use-sales";
 import { SalesImportDialog } from "./SalesImportDialog";
+import { SalesOrderDialog } from "./SalesOrderDialog";
 import { toast } from "sonner";
 
 export default function SalesList() {
   const [showImport, setShowImport] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
@@ -97,11 +99,17 @@ export default function SalesList() {
         title="Sales Orders"
         description="View and import sales orders"
         action={
-          <Button onClick={() => setShowImport(true)} size="sm">
-            <FileUp className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">Import Desty</span>
-            <span className="sm:hidden">Import</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowAddDialog(true)} size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Tambah</span>
+            </Button>
+            <Button onClick={() => setShowImport(true)} size="sm" variant="outline">
+              <FileUp className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Import Desty</span>
+              <span className="sm:hidden">Import</span>
+            </Button>
+          </div>
         }
       />
 
@@ -172,6 +180,7 @@ export default function SalesList() {
       />
 
       <SalesImportDialog open={showImport} onOpenChange={setShowImport} />
+      <SalesOrderDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
     </div>
   );
 }

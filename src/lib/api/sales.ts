@@ -37,6 +37,112 @@ export async function getSalesOrders(filters?: {
   return data;
 }
 
+export interface CreateSalesOrderInput {
+  order_no: string;
+  order_date: string;
+  marketplace?: string;
+  customer_name?: string;
+  status: 'pending' | 'completed' | 'cancelled' | 'returned';
+  total_fees: number;
+  items: {
+    variant_id: string;
+    qty: number;
+    unit_price: number;
+    hpp: number;
+  }[];
+}
+
+export async function createSalesOrder(input: CreateSalesOrderInput) {
+  // Calculate totals
+  const totalAmount = input.items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+  const totalHpp = input.items.reduce((sum, item) => sum + item.qty * item.hpp, 0);
+  const profit = totalAmount - totalHpp - input.total_fees;
+
+  // Create order
+  const { data: order, error: orderError } = await supabase
+    .from('sales_orders')
+    .insert({
+      desty_order_no: input.order_no,
+      order_date: input.order_date,
+      marketplace: input.marketplace || null,
+      customer_name: input.customer_name || null,
+      status: input.status,
+      total_amount: totalAmount,
+      total_hpp: totalHpp,
+      total_fees: input.total_fees,
+      profit,
+    })
+    .select()
+    .single();
+
+  if (orderError) throw orderError;
+
+  // Get variant info for items
+  const variantIds = input.items.map(item => item.variant_id);
+  const { data: variants } = await supabase
+    .from('product_variants')
+    .select('id, sku_variant, products(sku_master, name)')
+    .in('id', variantIds);
+
+  const variantMap = new Map(variants?.map(v => [v.id, v]) || []);
+
+  // Create order items
+  const orderItems = input.items.map(item => {
+    const variant = variantMap.get(item.variant_id);
+    return {
+      order_id: order.id,
+      variant_id: item.variant_id,
+      sku_variant: variant?.sku_variant || null,
+      sku_master: (variant?.products as any)?.sku_master || null,
+      product_name: (variant?.products as any)?.name || 'Unknown',
+      qty: item.qty,
+      unit_price: item.unit_price,
+      hpp: item.hpp,
+      subtotal: item.qty * item.unit_price,
+    };
+  });
+
+  const { error: itemsError } = await supabase
+    .from('order_items')
+    .insert(orderItems);
+
+  if (itemsError) throw itemsError;
+
+  // Deduct stock for completed orders
+  if (input.status === 'completed') {
+    for (const item of input.items) {
+      // Get current stock
+      const { data: variant } = await supabase
+        .from('product_variants')
+        .select('stock_qty')
+        .eq('id', item.variant_id)
+        .single();
+
+      if (variant) {
+        // Update stock
+        await supabase
+          .from('product_variants')
+          .update({ stock_qty: variant.stock_qty - item.qty })
+          .eq('id', item.variant_id);
+
+        // Create stock movement
+        await supabase
+          .from('stock_movements')
+          .insert({
+            variant_id: item.variant_id,
+            movement_type: 'SALE',
+            qty: -item.qty,
+            reference_type: 'sales_order',
+            reference_id: order.id,
+            notes: `Sale: ${input.order_no}`,
+          });
+      }
+    }
+  }
+
+  return order;
+}
+
 export async function getSalesOrder(id: string) {
   const { data, error } = await supabase
     .from('sales_orders')
