@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.run-tests]
 verify_jwt = false
+
+[functions.auto-journal-purchase]
+verify_jwt = false
+
+[functions.auto-journal-stock]
+verify_jwt = false
