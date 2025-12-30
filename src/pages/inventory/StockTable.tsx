@@ -45,12 +45,13 @@ export function StockTable() {
   };
 
   const columns = [
-    { key: "sku_variant", header: "SKU Variant" },
+    { key: "sku_variant", header: "SKU Variant", primary: true },
     { key: "stock_qty", header: "Current Stock" },
-    { key: "min_stock_alert", header: "Min Stock" },
+    { key: "min_stock_alert", header: "Min Stock", hideOnMobile: true },
     {
       key: "hpp",
       header: "HPP",
+      hideOnMobile: true,
       render: (item: any) => `Rp ${item.hpp.toLocaleString()}`,
     },
     {
@@ -90,6 +91,48 @@ export function StockTable() {
     },
   ];
 
+  const mobileCardRender = (item: any) => (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium">{item.sku_variant}</p>
+          <p className="text-sm text-muted-foreground">
+            HPP: Rp {item.hpp.toLocaleString()}
+          </p>
+        </div>
+        <span
+          className={`text-sm font-medium ${
+            item.stock_qty <= item.min_stock_alert
+              ? "text-destructive"
+              : "text-green-600"
+          }`}
+        >
+          {item.stock_qty <= item.min_stock_alert ? "Low Stock" : "OK"}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex gap-4 text-sm">
+          <span>Stock: <strong>{item.stock_qty}</strong></span>
+          <span className="text-muted-foreground">Min: {item.min_stock_alert}</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            setAdjustDialog({
+              open: true,
+              variantId: item.id,
+              sku: item.sku_variant,
+              currentStock: item.stock_qty,
+            })
+          }
+        >
+          Adjust
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <DataTable
@@ -97,6 +140,7 @@ export function StockTable() {
         data={variants ?? []}
         isLoading={isLoading}
         emptyMessage="No product variants found"
+        mobileCardRender={mobileCardRender}
       />
 
       <Dialog
