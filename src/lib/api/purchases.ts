@@ -176,27 +176,19 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
       })
       .eq('id', purchaseId);
 
-    // Trigger auto journal for receiving goods (only when fully or partially received)
-    if (someReceived) {
-      try {
-        await triggerAutoJournalPurchase(purchaseId, 'receive');
-      } catch (error) {
-        console.error('Auto journal failed:', error);
-        // Don't throw - journal failure shouldn't block receiving
-      }
-    }
+    // Note: Journal entry is NOT created here
+    // Journal will be created when payment is made via PaymentDialog
   }
 }
 
 // Trigger auto journal for purchase transactions
 export async function triggerAutoJournalPurchase(
   purchaseId: string, 
-  action: 'receive' | 'payment',
-  paymentMethod?: 'cash' | 'bank',
+  paymentType: 'cash' | 'bank' | 'hutang',
   amount?: number
 ) {
   const { data, error } = await supabase.functions.invoke('auto-journal-purchase', {
-    body: { purchaseId, action, paymentMethod, amount }
+    body: { purchaseId, paymentType, amount }
   });
 
   if (error) throw error;
