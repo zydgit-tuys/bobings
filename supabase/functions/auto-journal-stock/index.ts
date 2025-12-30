@@ -6,10 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Account UUIDs
-const ACCOUNTS = {
-  PERSEDIAAN: 'acc00000-0000-0000-0000-000000000009',
-  BIAYA_PENYESUAIAN_STOK: 'acc00000-0000-0000-0000-000000000033', // 6900 - Stock Adjustment Expense
+// Setting keys for account mapping
+const SETTING_KEYS = {
+  ACCOUNT_PERSEDIAAN: 'account_persediaan',
+  ACCOUNT_BIAYA_PENYESUAIAN_STOK: 'account_biaya_penyesuaian_stok',
 };
 
 interface StockAdjustmentRequest {
@@ -17,6 +17,21 @@ interface StockAdjustmentRequest {
   adjustmentQty: number; // positive = add, negative = reduce
   reason: string;
   unitCost: number;
+}
+
+// Helper function to get account mapping from settings
+async function getAccountMapping(supabase: any, settingKey: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', settingKey)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`Error fetching setting ${settingKey}:`, error);
+    return null;
+  }
+  return data?.setting_value || null;
 }
 
 serve(async (req) => {
@@ -36,6 +51,29 @@ serve(async (req) => {
     if (!variantId || adjustmentQty === undefined || !unitCost) {
       return new Response(
         JSON.stringify({ success: false, error: 'Missing required fields' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch account mappings from settings
+    const [persediaanAccountId, biayaPenyesuaianAccountId] = await Promise.all([
+      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_PERSEDIAAN),
+      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_BIAYA_PENYESUAIAN_STOK),
+    ]);
+
+    // Validate required accounts exist
+    if (!persediaanAccountId) {
+      console.error('❌ Persediaan account not configured in settings');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Akun Persediaan belum dikonfigurasi di Settings' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!biayaPenyesuaianAccountId) {
+      console.error('❌ Biaya Penyesuaian Stok account not configured in settings');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Akun Biaya Penyesuaian Stok belum dikonfigurasi di Settings' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -65,7 +103,6 @@ serve(async (req) => {
     console.log(`📦 Processing stock adjustment for ${productName}: ${adjustmentQty > 0 ? '+' : ''}${adjustmentQty}`);
 
     // Create stock movement first
-    const movementType = adjustmentQty > 0 ? 'IN' : 'OUT';
     const { data: movement, error: movementError } = await supabase
       .from('stock_movements')
       .insert({
@@ -108,7 +145,7 @@ serve(async (req) => {
       // Credit: Stock Adjustment (gain)
       journalLines.push({
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.PERSEDIAAN,
+        account_id: persediaanAccountId,
         debit: adjustmentValue,
         credit: 0,
         description: `Penambahan persediaan - ${productName}`,
@@ -116,7 +153,7 @@ serve(async (req) => {
 
       journalLines.push({
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.BIAYA_PENYESUAIAN_STOK,
+        account_id: biayaPenyesuaianAccountId,
         debit: 0,
         credit: adjustmentValue,
         description: `Penyesuaian stok (keuntungan) - ${reason}`,
@@ -127,7 +164,7 @@ serve(async (req) => {
       // Credit: Persediaan (inventory decreases)
       journalLines.push({
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.BIAYA_PENYESUAIAN_STOK,
+        account_id: biayaPenyesuaianAccountId,
         debit: adjustmentValue,
         credit: 0,
         description: `Penyesuaian stok (kerugian) - ${reason}`,
@@ -135,7 +172,7 @@ serve(async (req) => {
 
       journalLines.push({
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.PERSEDIAAN,
+        account_id: persediaanAccountId,
         debit: 0,
         credit: adjustmentValue,
         description: `Pengurangan persediaan - ${productName}`,

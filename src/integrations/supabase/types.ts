@@ -109,6 +109,50 @@ export type Database = {
           },
         ]
       }
+      bank_accounts: {
+        Row: {
+          account_holder: string | null
+          account_id: string
+          account_number: string | null
+          bank_name: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          is_default: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          account_holder?: string | null
+          account_id: string
+          account_number?: string | null
+          bank_name: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          account_holder?: string | null
+          account_id?: string
+          account_number?: string | null
+          bank_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           created_at: string

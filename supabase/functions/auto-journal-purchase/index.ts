@@ -6,18 +6,57 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Account UUIDs for journal entries
-const ACCOUNTS = {
-  KAS: 'acc00000-0000-0000-0000-000000000001',
-  BANK_BCA: 'acc00000-0000-0000-0000-000000000002',
-  PERSEDIAAN: 'acc00000-0000-0000-0000-000000000009',
-  HUTANG_SUPPLIER: 'acc00000-0000-0000-0000-000000000011',
+// Setting keys for account mapping
+const SETTING_KEYS = {
+  ACCOUNT_KAS: 'account_kas',
+  ACCOUNT_PERSEDIAAN: 'account_persediaan',
+  ACCOUNT_HUTANG_SUPPLIER: 'account_hutang_supplier',
 };
 
 interface PurchaseJournalRequest {
   purchaseId: string;
   paymentType: 'cash' | 'bank' | 'hutang';
+  bankAccountId?: string; // Optional: specific bank account ID
   amount?: number;
+}
+
+// Helper function to get account mapping from settings
+async function getAccountMapping(supabase: any, settingKey: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', settingKey)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`Error fetching setting ${settingKey}:`, error);
+    return null;
+  }
+  return data?.setting_value || null;
+}
+
+// Helper function to get bank account
+async function getBankAccount(supabase: any, bankAccountId?: string): Promise<{ accountId: string; bankName: string } | null> {
+  let query = supabase
+    .from('bank_accounts')
+    .select('account_id, bank_name')
+    .eq('is_active', true);
+
+  if (bankAccountId) {
+    query = query.eq('id', bankAccountId);
+  } else {
+    // Get default bank account
+    query = query.eq('is_default', true);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error || !data) {
+    console.log('No bank account found, will use settings fallback');
+    return null;
+  }
+
+  return { accountId: data.account_id, bankName: data.bank_name };
 }
 
 serve(async (req) => {
@@ -32,11 +71,27 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { purchaseId, paymentType, amount } = await req.json() as PurchaseJournalRequest;
+    const { purchaseId, paymentType, bankAccountId, amount } = await req.json() as PurchaseJournalRequest;
 
     if (!purchaseId || !paymentType) {
       return new Response(
         JSON.stringify({ success: false, error: 'Missing purchaseId or paymentType' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch account mappings from settings
+    const [kasAccountId, persediaanAccountId, hutangAccountId] = await Promise.all([
+      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_KAS),
+      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_PERSEDIAAN),
+      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_HUTANG_SUPPLIER),
+    ]);
+
+    // Validate required accounts exist
+    if (!persediaanAccountId) {
+      console.error('❌ Persediaan account not configured in settings');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Akun Persediaan belum dikonfigurasi di Settings' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -72,20 +127,50 @@ serve(async (req) => {
 
     switch (paymentType) {
       case 'cash':
-        creditAccountId = ACCOUNTS.KAS;
+        if (!kasAccountId) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Akun Kas belum dikonfigurasi di Settings' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        creditAccountId = kasAccountId;
         creditAccountName = 'Kas';
         journalDescription = `Pembelian tunai dari ${supplierName} - ${purchase.purchase_no}`;
         break;
+
       case 'bank':
-        creditAccountId = ACCOUNTS.BANK_BCA;
-        creditAccountName = 'Bank BCA';
+        // Try to get bank account from bank_accounts table first
+        const bankAccount = await getBankAccount(supabase, bankAccountId);
+        if (bankAccount) {
+          creditAccountId = bankAccount.accountId;
+          creditAccountName = bankAccount.bankName;
+        } else {
+          // Fallback to settings if no bank account configured
+          const settingsBankId = await getAccountMapping(supabase, 'account_bank');
+          if (!settingsBankId) {
+            return new Response(
+              JSON.stringify({ success: false, error: 'Akun Bank belum dikonfigurasi. Silakan tambahkan akun bank di Settings.' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          creditAccountId = settingsBankId;
+          creditAccountName = 'Bank';
+        }
         journalDescription = `Pembelian transfer dari ${supplierName} - ${purchase.purchase_no}`;
         break;
+
       case 'hutang':
-        creditAccountId = ACCOUNTS.HUTANG_SUPPLIER;
+        if (!hutangAccountId) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        creditAccountId = hutangAccountId;
         creditAccountName = 'Hutang Supplier';
         journalDescription = `Pembelian kredit dari ${supplierName} - ${purchase.purchase_no}`;
         break;
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: 'Invalid payment type' }),
@@ -114,7 +199,7 @@ serve(async (req) => {
       // Debit: Persediaan (inventory increases)
       {
         entry_id: journalEntry.id,
-        account_id: ACCOUNTS.PERSEDIAAN,
+        account_id: persediaanAccountId,
         debit: journalAmount,
         credit: 0,
         description: `Penambahan persediaan - ${purchase.purchase_no}`,

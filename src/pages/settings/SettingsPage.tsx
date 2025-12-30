@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AccountMappingSettings } from "./AccountMappingSettings";
 import { GeneralSettings } from "./GeneralSettings";
+import { BankAccountSettings } from "./BankAccountSettings";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("account-mapping");
@@ -19,6 +20,9 @@ export default function SettingsPage() {
           <TabsTrigger value="account-mapping" className="text-xs md:text-sm">
             Mapping Akun
           </TabsTrigger>
+          <TabsTrigger value="bank-accounts" className="text-xs md:text-sm">
+            Akun Bank
+          </TabsTrigger>
           <TabsTrigger value="general" className="text-xs md:text-sm">
             Pengaturan Umum
           </TabsTrigger>
@@ -26,6 +30,10 @@ export default function SettingsPage() {
 
         <TabsContent value="account-mapping" className="space-y-4">
           <AccountMappingSettings />
+        </TabsContent>
+
+        <TabsContent value="bank-accounts" className="space-y-4">
+          <BankAccountSettings />
         </TabsContent>
 
         <TabsContent value="general" className="space-y-4">
