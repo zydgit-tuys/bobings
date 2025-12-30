@@ -1,6 +1,6 @@
 import {
   LayoutDashboard,
-  Package,
+  Database,
   Truck,
   ShoppingCart,
   FileSpreadsheet,
@@ -22,7 +22,7 @@ import {
 
 const menuItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Products", url: "/products", icon: Package },
+  { title: "Master Data", url: "/master-data", icon: Database },
   { title: "Suppliers", url: "/suppliers", icon: Truck },
   { title: "Purchases", url: "/purchases", icon: ShoppingCart },
   { title: "Sales", url: "/sales", icon: FileSpreadsheet },
