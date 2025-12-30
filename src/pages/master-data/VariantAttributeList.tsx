@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   useVariantAttributes,
   useCreateVariantAttribute,
@@ -44,6 +45,7 @@ interface VariantAttribute {
 }
 
 export function VariantAttributeList() {
+  const isMobile = useIsMobile();
   const { data: attributes, isLoading } = useVariantAttributes();
   const createAttribute = useCreateVariantAttribute();
   const updateAttribute = useUpdateVariantAttribute();
@@ -66,11 +68,6 @@ export function VariantAttributeList() {
   const [valueName, setValueName] = useState("");
   const [valueAttrId, setValueAttrId] = useState<string | null>(null);
   const [deleteValueId, setDeleteValueId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
-  const filteredAttributes = (attributes ?? []).filter((attr: VariantAttribute) =>
-    attr.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   const toggleExpanded = (id: string) => {
     const newSet = new Set(expandedIds);
@@ -188,25 +185,15 @@ export function VariantAttributeList() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari atribut..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-9 text-sm"
-          />
-        </div>
-        <Button onClick={handleAddAttribute} size="sm">
-          <Plus className="h-4 w-4 mr-1" />
-          <span className="hidden sm:inline">Tambah</span>
-          <span className="sm:hidden">+</span>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={handleAddAttribute} size={isMobile ? "sm" : "default"}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Attribute
         </Button>
       </div>
 
-      {!filteredAttributes || filteredAttributes.length === 0 ? (
+      {!attributes || attributes.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             No variant attributes found. Add your first attribute (e.g., Size, Color).
@@ -214,7 +201,7 @@ export function VariantAttributeList() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredAttributes.map((attr: VariantAttribute) => (
+          {attributes.map((attr: VariantAttribute) => (
             <Card key={attr.id}>
               <Collapsible
                 open={expandedIds.has(attr.id)}
