@@ -17,20 +17,28 @@ export const SETTING_KEYS = {
   ACCOUNT_PIUTANG_MARKETPLACE: 'account_piutang_marketplace',
   ACCOUNT_HPP: 'account_hpp',
   ACCOUNT_BIAYA_PENYESUAIAN_STOK: 'account_biaya_penyesuaian_stok',
-  
+
   // Revenue accounts per marketplace
   ACCOUNT_PENJUALAN_SHOPEE: 'account_penjualan_shopee',
   ACCOUNT_PENJUALAN_TOKOPEDIA: 'account_penjualan_tokopedia',
   ACCOUNT_PENJUALAN_LAZADA: 'account_penjualan_lazada',
   ACCOUNT_PENJUALAN_TIKTOK: 'account_penjualan_tiktok',
   ACCOUNT_PENJUALAN_LAINNYA: 'account_penjualan_lainnya',
-  
+
   // Admin fee accounts per marketplace
   ACCOUNT_BIAYA_ADMIN_SHOPEE: 'account_biaya_admin_shopee',
   ACCOUNT_BIAYA_ADMIN_TOKOPEDIA: 'account_biaya_admin_tokopedia',
   ACCOUNT_BIAYA_ADMIN_LAZADA: 'account_biaya_admin_lazada',
   ACCOUNT_BIAYA_ADMIN_TIKTOK: 'account_biaya_admin_tiktok',
-  
+
+  // General / Fallback Accounts
+  ACCOUNT_PENJUALAN: 'account_penjualan',
+  ACCOUNT_PIUTANG: 'account_piutang',
+  ACCOUNT_BIAYA_ADMIN: 'account_biaya_admin',
+  ACCOUNT_RETUR_PENJUALAN: 'account_retur_penjualan',
+  ACCOUNT_DISKON_PENJUALAN: 'account_diskon_penjualan',
+  ACCOUNT_PENDAPATAN_ONGKIR: 'account_pendapatan_ongkir',
+
   // General settings
   ADMIN_PASSWORD: 'admin_password',
   DEFAULT_MIN_STOCK_ALERT: 'default_min_stock_alert',
@@ -91,7 +99,7 @@ export async function upsertSetting(key: string, value: string): Promise<AppSett
 }
 
 export async function upsertSettings(settings: Record<string, string>): Promise<void> {
-  const promises = Object.entries(settings).map(([key, value]) => 
+  const promises = Object.entries(settings).map(([key, value]) =>
     upsertSetting(key, value)
   );
   await Promise.all(promises);

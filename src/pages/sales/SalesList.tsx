@@ -89,8 +89,16 @@ export default function SalesList() {
     </div>
   );
 
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+
   const handleViewOrder = (order: any) => {
-    toast.info(`Viewing order ${order.desty_order_no}`);
+    setSelectedOrder(order);
+    setShowAddDialog(true);
+  };
+
+  const handleAddOrder = () => {
+    setSelectedOrder(null);
+    setShowAddDialog(true);
   };
 
   return (
@@ -100,7 +108,7 @@ export default function SalesList() {
         description="View and import sales orders"
         action={
           <div className="flex gap-2">
-            <Button onClick={() => setShowAddDialog(true)} size="sm">
+            <Button onClick={handleAddOrder} size="sm">
               <Plus className="h-4 w-4 mr-1" />
               <span className="hidden sm:inline">Tambah</span>
             </Button>
@@ -180,7 +188,14 @@ export default function SalesList() {
       />
 
       <SalesImportDialog open={showImport} onOpenChange={setShowImport} />
-      <SalesOrderDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
+      <SalesOrderDialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) setSelectedOrder(null);
+        }}
+        initialData={selectedOrder}
+      />
     </div>
   );
 }

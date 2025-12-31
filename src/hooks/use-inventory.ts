@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   getStockMovements, createStockMovement, adjustStock,
   getInventoryAlerts, getInventoryValuation,
   calculateOptimalStock, applyOptimalStock,
+  triggerAutoJournalStock, // Imported
   type OptimalStockParams, type ApplyStockParams
 } from '@/lib/api/inventory';
 import type { MovementType } from '@/types';
@@ -37,11 +38,27 @@ export function useAdjustStock() {
   return useMutation({
     mutationFn: ({ variantId, qty, notes }: { variantId: string; qty: number; notes?: string }) =>
       adjustStock(variantId, qty, notes),
-    onSuccess: () => {
+    onSuccess: async (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
       queryClient.invalidateQueries({ queryKey: ['variants'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-alerts'] });
-      toast.success('Stock adjusted successfully');
+
+      try {
+        await triggerAutoJournalStock(
+          variables.variantId,
+          variables.qty,
+          data.hpp,
+          variables.notes || 'Stock adjustment'
+        );
+        toast.success('Stock updated & Journal entry created');
+      } catch (error: any) {
+        console.error('Auto-journal error:', error);
+        if (error.message?.includes("closed accounting period")) {
+          toast.error("Stock updated, but Journal failed: Closed Period");
+        } else {
+          toast.warning(`Stock updated, but Journal failed: ${error.message}`);
+        }
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to adjust stock: ${error.message}`);

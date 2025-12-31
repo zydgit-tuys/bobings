@@ -108,35 +108,191 @@ export async function createSalesOrder(input: CreateSalesOrderInput) {
 
   if (itemsError) throw itemsError;
 
-  // Deduct stock for completed orders
+  // Deduct stock for completed orders via Stock Movement Trigger
+  // Trigger 'trigger_update_stock' handles the actual product_variant deduction
   if (input.status === 'completed') {
-    for (const item of input.items) {
-      // Get current stock
-      const { data: variant } = await supabase
-        .from('product_variants')
-        .select('stock_qty')
-        .eq('id', item.variant_id)
-        .single();
+    const movements = input.items.map(item => ({
+      variant_id: item.variant_id,
+      movement_type: 'SALE' as const,
+      qty: item.qty, // Positive magnitude. Trigger subtracts for 'SALE'.
+      reference_type: 'sales_order',
+      reference_id: order.id,
+      notes: `Sale: ${input.order_no}`,
+    }));
 
-      if (variant) {
-        // Update stock
-        await supabase
-          .from('product_variants')
-          .update({ stock_qty: variant.stock_qty - item.qty })
-          .eq('id', item.variant_id);
+    const { error: moveError } = await supabase
+      .from('stock_movements')
+      .insert(movements);
 
-        // Create stock movement
-        await supabase
-          .from('stock_movements')
-          .insert({
-            variant_id: item.variant_id,
-            movement_type: 'SALE',
-            qty: -item.qty,
-            reference_type: 'sales_order',
-            reference_id: order.id,
-            notes: `Sale: ${input.order_no}`,
-          });
-      }
+    if (moveError) console.error('Failed to create stock movements:', moveError);
+  }
+
+  return order;
+}
+
+export async function createSalesOrderWithJournal(input: CreateSalesOrderInput) {
+  const order = await createSalesOrder(input);
+
+  if (order.status === 'completed') {
+    // Attempt auto-journaling
+    const isOffline = !input.marketplace || input.marketplace === 'Offline';
+    const method = isOffline ? 'cash' : 'credit';
+
+    try {
+      // Small delay to ensure DB triggers/writes are fully propogated
+      await new Promise(r => setTimeout(r, 500));
+
+      await triggerAutoJournalSales(order.id, method);
+      console.log('Auto-journaling triggered for sales order:', order.id);
+    } catch (e) {
+      console.error('Failed to auto-journal sales:', e);
+    }
+  }
+
+  return order;
+}
+
+export async function updateSalesOrder(id: string, input: CreateSalesOrderInput) {
+  // 1. Fetch Existing Order to check previous status
+  const { data: oldOrder, error: fetchError } = await supabase
+    .from('sales_orders')
+    .select('*, order_items(*)')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  // 2. RESTORE STOCK if old order was completed
+  // We must reverse the previous 'SALE' by creating a 'RETURN' movement
+  if (oldOrder.status === 'completed' && oldOrder.order_items) {
+    const returnMovements = oldOrder.order_items.map((item: any) => ({
+      variant_id: item.variant_id,
+      movement_type: 'RETURN' as const, // Adds stock
+      qty: item.qty,
+      reference_type: 'sales_order',
+      reference_id: id,
+      notes: `Correction: Edit Order ${input.order_no} (Restock)`
+    }));
+
+    const { error: restockError } = await supabase.from('stock_movements').insert(returnMovements);
+    if (restockError) console.error('Failed to restock old items:', restockError);
+  }
+
+  // 3. Perform Update
+  const totalAmount = input.items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+  const totalHpp = input.items.reduce((sum, item) => sum + item.qty * item.hpp, 0);
+  const profit = totalAmount - totalHpp - input.total_fees;
+
+  const { data: order, error: orderError } = await supabase
+    .from('sales_orders')
+    .update({
+      desty_order_no: input.order_no,
+      order_date: input.order_date,
+      marketplace: input.marketplace || null,
+      customer_name: input.customer_name || null,
+      status: input.status,
+      total_amount: totalAmount,
+      total_hpp: totalHpp,
+      total_fees: input.total_fees,
+      profit,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (orderError) throw orderError;
+
+  // Re-create items
+  const { error: deleteError } = await supabase
+    .from('order_items')
+    .delete()
+    .eq('order_id', id);
+
+  if (deleteError) throw deleteError;
+
+  const variantIds = input.items.map(item => item.variant_id);
+  const { data: variants } = await supabase
+    .from('product_variants')
+    .select('id, sku_variant, products(sku_master, name)')
+    .in('id', variantIds);
+
+  const variantMap = new Map(variants?.map(v => [v.id, v]) || []);
+
+  const orderItems = input.items.map(item => {
+    const variant = variantMap.get(item.variant_id);
+    return {
+      order_id: id,
+      variant_id: item.variant_id,
+      sku_variant: variant?.sku_variant || null,
+      sku_master: (variant?.products as any)?.sku_master || null,
+      product_name: (variant?.products as any)?.name || 'Unknown',
+      qty: item.qty,
+      unit_price: item.unit_price,
+      hpp: item.hpp,
+      subtotal: item.qty * item.unit_price,
+    };
+  });
+
+  const { error: itemsError } = await supabase
+    .from('order_items')
+    .insert(orderItems);
+
+  if (itemsError) throw itemsError;
+
+  // 4. DEDUCT STOCK if new status is completed
+  if (input.status === 'completed') {
+    const movements = input.items.map(item => ({
+      variant_id: item.variant_id,
+      movement_type: 'SALE' as const,
+      qty: item.qty, // Positive. Trigger subtracts.
+      reference_type: 'sales_order',
+      reference_id: order.id,
+      notes: `Sale: ${input.order_no} (Updated)`,
+    }));
+
+    const { error: moveError } = await supabase
+      .from('stock_movements')
+      .insert(movements);
+
+    if (moveError) console.error('Failed to deduct stock for updated order:', moveError);
+  }
+
+  return order;
+}
+
+export async function updateSalesOrderWithJournal(id: string, input: CreateSalesOrderInput) {
+  // Get old status to check for transition
+  const { data: oldOrder } = await supabase
+    .from('sales_orders')
+    .select('status')
+    .eq('id', id)
+    .single();
+
+  const order = await updateSalesOrder(id, input);
+
+  // Trigger journal if becoming completed (and wasn't before)
+  // Or if it IS completed, we might want to update the journal? 
+  // For now, let's just support triggering it if we move to completed.
+  // Trigger journal if becoming completed (and wasn't before)
+  if (order.status === 'completed' && oldOrder?.status !== 'completed') {
+    const method = input.marketplace ? 'credit' : 'cash';
+    try {
+      await triggerAutoJournalSales(order.id, method, undefined, false);
+      console.log('Auto-journaling triggered for updated sales order:', order.id);
+    } catch (e) {
+      console.error('Failed to auto-journal sales update:', e);
+    }
+  }
+
+  // Trigger journal REVERSAL if becoming 'returned'
+  if (order.status === 'returned' && oldOrder?.status !== 'returned') {
+    const method = input.marketplace ? 'credit' : 'cash'; // Reversal uses same method
+    try {
+      await triggerAutoJournalSales(order.id, method, undefined, true);
+      console.log('Auto-journaling RETURN triggered for:', order.id);
+    } catch (e) {
+      console.error('Failed to trigger return journal:', e);
     }
   }
 
@@ -192,16 +348,224 @@ export async function getSalesImport(id: string) {
 // DESTY IMPORT FUNCTIONS
 // ============================================
 
+import * as XLSX from 'xlsx';
+
+// Helper types and constants for Parsing
+const COLUMN_MAPPINGS: Record<string, string[]> = {
+  orderNo: ['Nomor Pesanan (di Desty)', 'Nomor Pesanan', 'No. Pesanan', 'Order No', 'No Pesanan'],
+  marketplaceOrderNo: ['Nomor Pesanan (di Marketplace)', 'Marketplace Order No'],
+  marketplace: ['Channel - Nama Toko', 'Channel', 'Marketplace', 'Platform', 'Toko'],
+  orderDate: ['Tanggal Pesanan Dibuat', 'Tanggal Pesanan', 'Order Date', 'Waktu Pesanan Dibuat'],
+  customerName: ['Nama Pembeli', 'Customer Name', 'Nama Customer', 'Pembeli'],
+  sku: ['SKU Master', 'SKU Induk', 'SKU', 'Kode SKU'],
+  skuVariant: ['SKU Marketplace', 'SKU Variant'],
+  productName: ['Nama Produk', 'Product Name', 'Produk', 'Nama Barang'],
+  variant: ['Varian Produk', 'Variant', 'Variasi'],
+  qty: ['Jumlah', 'Qty', 'Quantity', 'Kuantitas'],
+  unitPrice: ['Harga Satuan', 'Unit Price', 'Harga', 'Harga Awal'],
+  paidPrice: ['Harga Dibayar', 'Paid Price'],
+  subtotal: ['Subtotal Produk', 'Subtotal', 'Product Subtotal'],
+  orderSubtotal: ['Subtotal Pesanan', 'Order Subtotal'],
+  sellerDiscount: ['Diskon Penjual', 'Seller Discount', 'Discount'],
+  invoiceTotal: ['Total Faktur', 'Invoice Total'],
+  shippingFee: ['Biaya Pengiriman Final', 'Ongkir', 'Shipping Fee', 'Biaya Kirim'],
+  adminFee: ['Biaya Layanan', 'Biaya Admin', 'Admin Fee', 'Service Fee'],
+  tax: ['Pajak', 'Tax'],
+  totalSales: ['Total Penjualan', 'Total Sales'],
+  settlement: ['Penyelesaian Pembayaran', 'Settlement'],
+  hpp: ['HPP', 'Cost of Goods', 'Harga Pokok'],
+  profit: ['Laba Kotor', 'Gross Profit', 'Profit'],
+  status: ['Status Pesanan', 'Status', 'Order Status'],
+};
+
+function findColumnIndex(headers: string[], possibleNames: string[]): number {
+  for (const name of possibleNames) {
+    const normalize = (str: string) => str.toLowerCase().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    const index = headers.findIndex(h =>
+      h && normalize(h.toString()) === normalize(name)
+    );
+    if (index !== -1) return index;
+  }
+  return -1;
+}
+
+function parseNumeric(value: any): number {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value;
+  const cleaned = value.toString().replace(/[Rp.,\s]/g, '').trim();
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
+
+function parseDate(value: any): string {
+  if (!value) return new Date().toISOString().split('T')[0];
+  if (typeof value === 'number') {
+    // Excel date to JS date
+    const date = new Date((value - 25569) * 86400 * 1000);
+    return date.toISOString().split('T')[0];
+  }
+  const parsed = new Date(value.toString());
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
 export async function parseDestyFile(file: File): Promise<ParseResult> {
-  const formData = new FormData();
-  formData.append('file', file);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
 
-  const { data, error } = await supabase.functions.invoke('parse-desty-xlsx', {
-    body: formData,
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        if (!data) throw new Error('Failed to read file');
+
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        if (workbook.SheetNames.length === 0) throw new Error('Empty workbook');
+
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+        if (rawData.length < 2) throw new Error('No data rows found');
+
+        // SMART HEADER DETECTION
+        // Scan first 20 rows. For each row, count how many known columns are found.
+        // The row with the highest match score is the header.
+        let headerRowIndex = 0;
+        let maxMatchScore = 0;
+
+        const allPossibleHeaders = new Set<string>();
+        Object.values(COLUMN_MAPPINGS).forEach(names => names.forEach(n => allPossibleHeaders.add(n.toLowerCase().trim())));
+
+        for (let i = 0; i < Math.min(20, rawData.length); i++) {
+          const row = rawData[i];
+          if (!row || !Array.isArray(row) || row.length === 0) continue;
+
+          let matchScore = 0;
+          row.forEach(cell => {
+            if (cell && typeof cell === 'string') {
+              if (allPossibleHeaders.has(cell.toLowerCase().trim())) {
+                matchScore++;
+              }
+            }
+          });
+
+          if (matchScore > maxMatchScore) {
+            maxMatchScore = matchScore;
+            headerRowIndex = i;
+          }
+        }
+
+        // If no matches found, fallback to 0 or fail? 
+        // If maxMatchScore is 0, it means we scanned 20 rows and found NO known headers.
+        // This likely means the file format is completely unknown or empty.
+        if (maxMatchScore === 0) {
+          console.warn('No known headers found in first 20 rows. Defaulting to row 0.');
+        } else {
+          console.log(`Found header at row ${headerRowIndex} with ${maxMatchScore} matches.`);
+        }
+
+        const headers = rawData[headerRowIndex].map(h => h?.toString() || '');
+        const columnIndexes: Record<string, number> = {};
+        for (const [field, possibleNames] of Object.entries(COLUMN_MAPPINGS)) {
+          columnIndexes[field] = findColumnIndex(headers, possibleNames);
+        }
+
+        console.log('Detected Headers (JSON):', JSON.stringify(headers));
+        console.log('Mapped Columns:', columnIndexes);
+
+        // Required headers detection check
+        const criticalFields = ['orderNo', 'sku', 'qty'];
+        const missingHeaders = criticalFields.filter(f => columnIndexes[f] === -1);
+
+        if (missingHeaders.length > 0) {
+          const missingNames = missingHeaders.map(f => COLUMN_MAPPINGS[f].join(' OR ')).join(', ');
+          throw new Error(`Format File Tidak Sesuai. Kolom berikut tidak ditemukan: ${missingHeaders.join(', ')}.\nPastikan ada header: ${missingNames}`);
+        }
+
+        const parsedRows: DestyRow[] = [];
+        const errors: string[] = [];
+
+        for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+          const row = rawData[i];
+          if (!row || row.length === 0) continue;
+
+          const orderNo = row[columnIndexes.orderNo]?.toString()?.trim();
+          const sku = row[columnIndexes.sku]?.toString()?.trim();
+
+          if (!orderNo && !sku) continue;
+
+          if (!orderNo) {
+            // errors.push(`Row ${i + 1}: Missing order number`);
+            continue; // Skip silently if just empty line
+          }
+          if (!sku) {
+            errors.push(`Row ${i + 1}: Missing SKU for Order ${orderNo}`);
+            continue;
+          }
+
+          const qty = parseNumeric(row[columnIndexes.qty]);
+          if (qty <= 0) {
+            errors.push(`Row ${i + 1}: Invalid quantity for Order ${orderNo}`);
+            continue;
+          }
+
+
+          // Extract marketplace name
+          const marketplace = row[columnIndexes.marketplace]?.toString()?.trim() || 'Unknown';
+          // const marketplace = rawMarketplace.split('-')[0]?.trim() || rawMarketplace;
+
+          parsedRows.push({
+            orderNo,
+            marketplace,
+            orderDate: parseDate(row[columnIndexes.orderDate]),
+            customerName: row[columnIndexes.customerName]?.toString()?.trim() || 'Unknown',
+            sku,
+            skuVariant: row[columnIndexes.skuVariant]?.toString()?.trim() || sku,
+            productName: row[columnIndexes.productName]?.toString()?.trim() || sku,
+            variant: row[columnIndexes.variant]?.toString()?.trim() || '',
+            qty,
+            unitPrice: parseNumeric(row[columnIndexes.unitPrice]),
+            paidPrice: parseNumeric(row[columnIndexes.paidPrice]),
+            subtotal: parseNumeric(row[columnIndexes.subtotal]),
+            orderSubtotal: parseNumeric(row[columnIndexes.orderSubtotal]),
+            sellerDiscount: Math.abs(parseNumeric(row[columnIndexes.sellerDiscount])),
+            invoiceTotal: parseNumeric(row[columnIndexes.invoiceTotal]),
+            shippingFee: Math.abs(parseNumeric(row[columnIndexes.shippingFee])),
+            adminFee: Math.abs(parseNumeric(row[columnIndexes.adminFee])),
+            tax: parseNumeric(row[columnIndexes.tax]),
+            totalSales: parseNumeric(row[columnIndexes.totalSales]),
+            settlement: parseNumeric(row[columnIndexes.settlement]),
+            hpp: parseNumeric(row[columnIndexes.hpp]),
+            profit: parseNumeric(row[columnIndexes.profit]),
+            status: row[columnIndexes.status]?.toString()?.trim() || 'Completed',
+          });
+        }
+
+        resolve({
+          success: true,
+          data: parsedRows,
+          errors: errors.length > 0 ? errors : undefined,
+          summary: {
+            totalRows: rawData.length - headerRowIndex - 1,
+            validRows: parsedRows.length,
+            invalidRows: errors.length
+          }
+        });
+
+      } catch (err: any) {
+        console.error('Parse error:', err);
+        resolve({ success: false, errors: [err.message] });
+      }
+    };
+
+    reader.onerror = (error) => {
+      reject(error);
+    };
+
+    reader.readAsArrayBuffer(file);
   });
-
-  if (error) throw error;
-  return data as ParseResult;
 }
 
 export async function processSalesImport(rows: DestyRow[], filename: string): Promise<ProcessResult> {
@@ -272,4 +636,22 @@ export async function getSalesStats(period: 'today' | 'week' | 'month' | 'year')
   }
 
   return stats;
+}
+
+// ============================================
+// AUTO JOURNAL
+// ============================================
+
+export async function triggerAutoJournalSales(
+  salesOrderId: string,
+  paymentMethod: 'cash' | 'bank' | 'credit',
+  amount?: number,
+  isReturn: boolean = false
+) {
+  const { data, error } = await supabase.functions.invoke('auto-journal-sales', {
+    body: { salesOrderId, paymentMethod, amount, is_return: isReturn }
+  });
+
+  if (error) throw error;
+  return data;
 }

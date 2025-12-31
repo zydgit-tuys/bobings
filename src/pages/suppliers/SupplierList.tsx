@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Pencil, Trash2, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
@@ -9,6 +10,7 @@ import { SupplierDialog } from "./SupplierDialog";
 import type { Supplier } from "@/types";
 
 export default function SupplierList() {
+  const navigate = useNavigate();
   const { data: suppliers, isLoading } = useSuppliers();
   const deleteSupplier = useDeleteSupplier();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -27,6 +29,18 @@ export default function SupplierList() {
       header: "",
       render: (item: Supplier) => (
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/purchases?supplier=${item.id}`);
+            }}
+            className="hidden md:flex"
+          >
+            <ShoppingCart className="h-4 w-4 mr-1" />
+            PO
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -93,6 +107,18 @@ export default function SupplierList() {
         {item.phone && <span>{item.phone}</span>}
         {item.city && <span>{item.city}</span>}
       </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/purchases?supplier=${item.id}`);
+        }}
+        className="mt-2 w-full"
+      >
+        <ShoppingCart className="h-4 w-4 mr-2" />
+        Lihat Purchase Orders
+      </Button>
     </div>
   );
 

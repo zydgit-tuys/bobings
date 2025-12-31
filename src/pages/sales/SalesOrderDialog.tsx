@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useProducts } from "@/hooks/use-products";
-import { useCreateSalesOrder } from "@/hooks/use-sales";
+import { useCreateSalesOrder, useUpdateSalesOrder } from "@/hooks/use-sales";
 
 const orderItemSchema = z.object({
   variant_id: z.string().min(1, "Pilih produk"),
@@ -51,11 +51,13 @@ type FormData = z.infer<typeof formSchema>;
 interface SalesOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialData?: any; // Add initialData prop
 }
 
-export function SalesOrderDialog({ open, onOpenChange }: SalesOrderDialogProps) {
+export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrderDialogProps) {
   const { data: products } = useProducts();
   const createOrder = useCreateSalesOrder();
+  const updateOrder = useUpdateSalesOrder(); // Use update hook
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -74,6 +76,38 @@ export function SalesOrderDialog({ open, onOpenChange }: SalesOrderDialogProps) 
     control: form.control,
     name: "items",
   });
+
+  // Pre-fill form when initialData changes
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        form.reset({
+          order_no: initialData.desty_order_no,
+          order_date: initialData.order_date,
+          marketplace: initialData.marketplace || "",
+          customer_name: initialData.customer_name || "",
+          status: initialData.status,
+          total_fees: initialData.total_fees || 0,
+          items: initialData.order_items?.map((item: any) => ({
+            variant_id: item.variant_id,
+            qty: item.qty,
+            unit_price: item.unit_price,
+            hpp: item.hpp,
+          })) || [],
+        });
+      } else {
+        form.reset({
+          order_no: "",
+          order_date: new Date().toISOString().split("T")[0],
+          marketplace: "",
+          customer_name: "",
+          status: "completed",
+          total_fees: 0,
+          items: [{ variant_id: "", qty: 1, unit_price: 0, hpp: 0 }],
+        });
+      }
+    }
+  }, [open, initialData, form]);
 
   // Build variant options from products
   const variantOptions = products?.flatMap((product) =>
@@ -94,21 +128,27 @@ export function SalesOrderDialog({ open, onOpenChange }: SalesOrderDialogProps) 
   };
 
   const onSubmit = async (data: FormData) => {
+    const payload = {
+      order_no: data.order_no,
+      order_date: data.order_date,
+      marketplace: data.marketplace,
+      customer_name: data.customer_name,
+      status: data.status,
+      total_fees: data.total_fees,
+      items: data.items.map(item => ({
+        variant_id: item.variant_id,
+        qty: item.qty,
+        unit_price: item.unit_price,
+        hpp: item.hpp,
+      })),
+    };
+
     try {
-      await createOrder.mutateAsync({
-        order_no: data.order_no,
-        order_date: data.order_date,
-        marketplace: data.marketplace,
-        customer_name: data.customer_name,
-        status: data.status,
-        total_fees: data.total_fees,
-        items: data.items.map(item => ({
-          variant_id: item.variant_id,
-          qty: item.qty,
-          unit_price: item.unit_price,
-          hpp: item.hpp,
-        })),
-      });
+      if (initialData) {
+        await updateOrder.mutateAsync({ id: initialData.id, data: payload });
+      } else {
+        await createOrder.mutateAsync(payload);
+      }
       form.reset();
       onOpenChange(false);
     } catch (error) {
@@ -119,26 +159,20 @@ export function SalesOrderDialog({ open, onOpenChange }: SalesOrderDialogProps) 
   // Calculate totals
   const items = form.watch("items");
   const totalFees = form.watch("total_fees") || 0;
-  
-  const totalAmount = items.reduce((sum, item) => 
+
+  const totalAmount = items.reduce((sum, item) =>
     sum + (item.qty || 0) * (item.unit_price || 0), 0
   );
-  const totalHpp = items.reduce((sum, item) => 
+  const totalHpp = items.reduce((sum, item) =>
     sum + (item.qty || 0) * (item.hpp || 0), 0
   );
   const profit = totalAmount - totalHpp - totalFees;
-
-  useEffect(() => {
-    if (!open) {
-      form.reset();
-    }
-  }, [open, form]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tambah Sales Order</DialogTitle>
+          <DialogTitle>{initialData ? "Edit Sales Order" : "Tambah Sales Order"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -396,8 +430,8 @@ export function SalesOrderDialog({ open, onOpenChange }: SalesOrderDialogProps) 
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Batal
               </Button>
-              <Button type="submit" disabled={createOrder.isPending}>
-                {createOrder.isPending ? "Menyimpan..." : "Simpan"}
+              <Button type="submit" disabled={createOrder.isPending || updateOrder.isPending}>
+                {createOrder.isPending || updateOrder.isPending ? "Menyimpan..." : "Simpan"}
               </Button>
             </div>
           </form>

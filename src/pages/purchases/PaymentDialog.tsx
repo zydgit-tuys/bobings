@@ -62,7 +62,11 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
       onOpenChange(false);
     },
     onError: (error: Error) => {
-      toast.error(`Gagal membuat jurnal: ${error.message}`);
+      if (error.message.includes("closed accounting period")) {
+        toast.error("Gagal: Periode Akuntansi sudah ditutup untuk tanggal ini");
+      } else {
+        toast.error(`Gagal membuat jurnal: ${error.message}`);
+      }
     },
   });
 
@@ -199,11 +203,11 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>
-          <Button 
-            onClick={handlePayment} 
+          <Button
+            onClick={handlePayment}
             disabled={
-              paymentMutation.isPending || 
-              amount <= 0 || 
+              paymentMutation.isPending ||
+              amount <= 0 ||
               (paymentType === "bank" && !selectedBankId && bankAccounts && bankAccounts.length > 0)
             }
           >

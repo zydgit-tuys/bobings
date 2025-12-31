@@ -237,12 +237,23 @@ export interface DestyRow {
   orderDate: string;
   customerName: string;
   sku: string;
+  skuVariant?: string;
   productName: string;
+  variant?: string;
   qty: number;
   unitPrice: number;
+  paidPrice?: number;
   subtotal: number;
+  orderSubtotal?: number;
+  sellerDiscount?: number;
+  invoiceTotal?: number;
   shippingFee: number;
   adminFee: number;
+  tax?: number;
+  totalSales?: number;
+  settlement?: number;
+  hpp?: number;
+  profit?: number;
   status: string;
 }
 

@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   getSalesOrders, getSalesOrder,
   getSalesImports, getSalesImport,
   parseDestyFile, processSalesImport,
   getSalesStats,
   createSalesOrder,
+  createSalesOrderWithJournal, // Add this
+  updateSalesOrderWithJournal,
   type CreateSalesOrderInput
 } from '@/lib/api/sales';
 import type { DestyRow } from '@/types';
@@ -35,7 +37,7 @@ export function useCreateSalesOrder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateSalesOrderInput) => createSalesOrder(data),
+    mutationFn: (data: CreateSalesOrderInput) => createSalesOrderWithJournal(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
       queryClient.invalidateQueries({ queryKey: ['variants'] });
@@ -44,6 +46,24 @@ export function useCreateSalesOrder() {
     },
     onError: (error: Error) => {
       toast.error(`Gagal membuat sales order: ${error.message}`);
+    },
+  });
+}
+
+export function useUpdateSalesOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CreateSalesOrderInput }) =>
+      updateSalesOrderWithJournal(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['variants'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+      toast.success('Sales order berhasil diperbarui');
+    },
+    onError: (error: Error) => {
+      toast.error(`Gagal update sales order: ${error.message}`);
     },
   });
 }
@@ -85,7 +105,7 @@ export function useProcessSalesImport() {
       queryClient.invalidateQueries({ queryKey: ['sales-imports'] });
       queryClient.invalidateQueries({ queryKey: ['variants'] });
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
-      
+
       if (result.summary) {
         toast.success(
           `Import completed: ${result.summary.successCount} success, ${result.summary.skippedCount} skipped`

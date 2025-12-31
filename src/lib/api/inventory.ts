@@ -116,7 +116,7 @@ export async function getInventoryValuation() {
   const items = (data || []).map(v => {
     const costValue = v.stock_qty * v.hpp;
     const retailValue = v.stock_qty * v.price;
-    
+
     totalValue += costValue;
     totalRetailValue += retailValue;
     totalItems += v.stock_qty;
@@ -216,6 +216,24 @@ export interface ApplyStockResponse {
 export async function applyOptimalStock(params: ApplyStockParams): Promise<ApplyStockResponse> {
   const { data, error } = await supabase.functions.invoke('apply-optimal-stock', {
     body: params,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+// ============================================
+// AUTO JOURNAL
+// ============================================
+
+export async function triggerAutoJournalStock(
+  variantId: string,
+  adjustmentQty: number,
+  unitCost: number,
+  reason: string
+) {
+  const { data, error } = await supabase.functions.invoke('auto-journal-stock', {
+    body: { variantId, adjustmentQty, unitCost, reason }
   });
 
   if (error) throw error;

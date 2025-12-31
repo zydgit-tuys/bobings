@@ -5,15 +5,15 @@ import { useSuppliers } from "@/hooks/use-suppliers";
 import { usePurchases } from "@/hooks/use-purchases";
 import { useSalesOrders, useSalesStats } from "@/hooks/use-sales";
 import { useInventoryAlerts } from "@/hooks/use-inventory";
-import { 
-  Package, 
-  Truck, 
-  ShoppingCart, 
-  DollarSign, 
+import {
+  Package,
+  Truck,
+  ShoppingCart,
+  DollarSign,
   TrendingUp,
   Percent,
   BarChart3,
-  AlertTriangle 
+  AlertTriangle
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -23,12 +23,13 @@ import { TopProductsTable } from "@/components/dashboard/TopProductsTable";
 import { ProfitBreakdown } from "@/components/dashboard/ProfitBreakdown";
 import { InventoryOverview } from "@/components/dashboard/InventoryOverview";
 import { DashboardEmptyState } from "@/components/dashboard/EmptyState";
+import { ActionCenter } from "@/components/dashboard/ActionCenter";
 
 type Period = 'today' | 'week' | 'month' | 'year';
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>('month');
-  
+
   const { data: products, isLoading: loadingProducts } = useProducts();
   const { data: suppliers, isLoading: loadingSuppliers } = useSuppliers();
   const { data: purchases, isLoading: loadingPurchases } = usePurchases();
@@ -54,8 +55,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <PageHeader 
-        title="Dashboard" 
+      <PageHeader
+        title="Dashboard"
         description="Analytics dan overview bisnis"
       />
 
@@ -72,6 +73,13 @@ export default function Dashboard() {
       {/* Empty State - Show when no sales data */}
       {hasNoSalesData && <DashboardEmptyState />}
 
+      {/* Action Center - Pending Tasks */}
+      <ActionCenter
+        draftPurchasesCount={purchases?.filter(p => p.status === 'draft').length || 0}
+        pendingSalesCount={salesOrders?.filter(s => s.status === 'pending').length || 0}
+        lowStockCount={alerts?.length || 0}
+      />
+
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">
         <StatCard
@@ -84,8 +92,8 @@ export default function Dashboard() {
         <StatCard
           title="Profit Bersih"
           value={formatCurrency(salesStats?.totalProfit || 0)}
-          subtitle={salesStats?.totalRevenue 
-            ? `Margin ${((salesStats.totalProfit / salesStats.totalRevenue) * 100).toFixed(1)}%` 
+          subtitle={salesStats?.totalRevenue
+            ? `Margin ${((salesStats.totalProfit / salesStats.totalRevenue) * 100).toFixed(1)}%`
             : undefined}
           icon={TrendingUp}
           isLoading={loadingStats}
@@ -94,8 +102,8 @@ export default function Dashboard() {
         <StatCard
           title="HPP (Modal)"
           value={formatCurrency(salesStats?.totalHpp || 0)}
-          subtitle={salesStats?.totalRevenue 
-            ? `${((salesStats.totalHpp / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue` 
+          subtitle={salesStats?.totalRevenue
+            ? `${((salesStats.totalHpp / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue`
             : undefined}
           icon={Package}
           isLoading={loadingStats}
@@ -103,8 +111,8 @@ export default function Dashboard() {
         <StatCard
           title="Fees Marketplace"
           value={formatCurrency(salesStats?.totalFees || 0)}
-          subtitle={salesStats?.totalRevenue 
-            ? `${((salesStats.totalFees / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue` 
+          subtitle={salesStats?.totalRevenue
+            ? `${((salesStats.totalFees / salesStats.totalRevenue) * 100).toFixed(1)}% dari revenue`
             : undefined}
           icon={Percent}
           isLoading={loadingStats}

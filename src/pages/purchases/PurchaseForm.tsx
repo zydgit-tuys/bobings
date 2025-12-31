@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { ArrowLeft, Save, Plus, Trash2, PackageCheck, CreditCard } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, PackageCheck, CreditCard, Package, Wallet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -154,22 +154,50 @@ export default function PurchaseForm() {
       <PageHeader
         title={isEdit ? `Purchase Order: ${purchase?.purchase_no}` : "New Purchase Order"}
         action={
-          <div className="flex gap-2">
-            {isEdit && purchase?.status !== "draft" && purchase?.status !== "cancelled" && (
-              <Button variant="outline" onClick={() => setShowPaymentDialog(true)}>
-                <CreditCard className="h-4 w-4 mr-2" />
-                Payment
+          // Actions
+          <div className="flex flex-col sm:flex-row gap-2 justify-end pt-4 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/purchases')}
+              className="w-full sm:w-auto"
+            >
+              Batal
+            </Button>
+
+            {id && purchase?.status === 'ordered' && (
+              <Button
+                type="button"
+                onClick={() => setShowReceiveDialog(true)}
+                className="w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                <Package className="mr-2 h-4 w-4" />
+                Terima Barang
               </Button>
             )}
-            {isEdit && purchase?.status !== "received" && purchase?.status !== "cancelled" && (
-              <Button variant="outline" onClick={() => setShowReceiveDialog(true)}>
-                <PackageCheck className="h-4 w-4 mr-2" />
-                Receive Goods
+
+            {id && (purchase?.status === 'received' || purchase?.status === 'ordered') && (
+              <Button
+                type="button"
+                onClick={() => setShowPaymentDialog(true)}
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Wallet className="mr-2 h-4 w-4" />
+                Bayar / Pelunasan
               </Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/purchases")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+
+            <Button
+              type="submit"
+              disabled={createPurchase.isPending || updatePurchase.isPending}
+              className="w-full sm:w-auto"
+            >
+              {(createPurchase.isPending || updatePurchase.isPending) ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Simpan Draft
             </Button>
           </div>
         }

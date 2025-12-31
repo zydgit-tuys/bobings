@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash2, Image } from "lucide-react";
+import { Plus, Pencil, Trash2, Image, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
@@ -69,6 +69,18 @@ export default function ProductList({ embedded = false }: ProductListProps) {
       filterable: false,
       render: (item: any) => (
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/inventory/movements?product=${item.id}`);
+            }}
+            className="hidden lg:flex"
+          >
+            <History className="h-4 w-4 mr-1" />
+            Riwayat
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -139,7 +151,7 @@ export default function ProductList({ embedded = false }: ProductListProps) {
           }
         />
       )}
-      
+
       {embedded && (
         <div className="flex justify-end mb-4">
           <Button onClick={() => navigate("/products/new")} size="sm">
