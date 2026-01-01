@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/shared/DataTable";
-import { useChartOfAccounts, useCreateAccount } from "@/hooks/use-accounting";
+import { useChartOfAccounts, useCreateAccount, useGenerateAccountCode } from "@/hooks/use-accounting";
 import type { AccountType } from "@/types";
 
 const accountSchema = z.object({
@@ -61,6 +61,9 @@ export function ChartOfAccounts() {
       account_type: "asset",
     },
   });
+
+  const accountType = form.watch('account_type');
+  const { data: generatedCode } = useGenerateAccountCode(accountType);
 
   const onSubmit = (data: AccountFormData) => {
     createAccount.mutate({
@@ -110,9 +113,10 @@ export function ChartOfAccounts() {
                     <FormItem>
                       <FormLabel>Account Code</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="e.g., 1000" />
+                        <Input {...field} placeholder={generatedCode || "e.g., 1-001"} />
                       </FormControl>
                       <FormMessage />
+                      <p className="text-xs text-muted-foreground">Suggested: {generatedCode}</p>
                     </FormItem>
                   )}
                 />

@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useCreateSupplier, useUpdateSupplier } from "@/hooks/use-suppliers";
+import { useCreateSupplier, useUpdateSupplier, useGenerateSupplierCode } from "@/hooks/use-suppliers";
 import type { Supplier } from "@/types";
 
 const supplierSchema = z.object({
@@ -45,6 +45,7 @@ export function SupplierDialog({ open, onOpenChange, supplier }: SupplierDialogP
   const isEdit = !!supplier;
   const createSupplier = useCreateSupplier();
   const updateSupplier = useUpdateSupplier();
+  const { data: generatedCode } = useGenerateSupplierCode();
 
   const form = useForm<SupplierFormData>({
     resolver: zodResolver(supplierSchema),
@@ -74,7 +75,7 @@ export function SupplierDialog({ open, onOpenChange, supplier }: SupplierDialogP
       });
     } else {
       form.reset({
-        code: "",
+        code: generatedCode || "",
         name: "",
         contact_person: "",
         phone: "",
@@ -84,7 +85,7 @@ export function SupplierDialog({ open, onOpenChange, supplier }: SupplierDialogP
         notes: "",
       });
     }
-  }, [supplier, form]);
+  }, [supplier, generatedCode, form]);
 
   const onSubmit = (data: SupplierFormData) => {
     if (isEdit) {

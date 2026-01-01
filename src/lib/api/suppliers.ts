@@ -58,3 +58,20 @@ export async function deleteSupplier(id: string) {
 
   if (error) throw error;
 }
+
+// Generate next supplier code
+export async function generateSupplierCode() {
+  const { data } = await supabase
+    .from('suppliers')
+    .select('code')
+    .like('code', 'SUP%')
+    .order('code', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0) {
+    const lastNo = parseInt(data[0].code.slice(3)) || 0;
+    return `SUP${String(lastNo + 1).padStart(4, '0')}`;
+  }
+
+  return 'SUP0001';
+}

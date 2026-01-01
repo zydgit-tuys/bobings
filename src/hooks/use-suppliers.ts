@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSuppliers, getSupplier, createSupplier, updateSupplier, deleteSupplier } from '@/lib/api/suppliers';
+import { getSuppliers, getSupplier, createSupplier, updateSupplier, deleteSupplier, generateSupplierCode } from '@/lib/api/suppliers';
 import type { Supplier } from '@/types';
 import { toast } from 'sonner';
 
@@ -61,5 +61,12 @@ export function useDeleteSupplier() {
     onError: (error: Error) => {
       toast.error(`Failed to delete supplier: ${error.message}`);
     },
+  });
+}
+
+export function useGenerateSupplierCode() {
+  return useQuery({
+    queryKey: ['generate-supplier-code'],
+    queryFn: generateSupplierCode,
   });
 }

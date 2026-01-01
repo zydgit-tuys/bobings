@@ -117,10 +117,20 @@ export default function ProductForm() {
       <PageHeader
         title={isEdit ? "Edit Product" : "New Product"}
         action={
-          <Button variant="outline" size="sm" onClick={() => navigate("/products")}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">Back</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/products")}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={form.handleSubmit(onSubmit)}
+              disabled={createProduct.isPending || updateProduct.isPending}
+            >
+              <Save className="h-4 w-4 mr-1" />
+              {isEdit ? "Update" : "Create"}
+            </Button>
+          </div>
         }
       />
 
@@ -256,16 +266,6 @@ export default function ProductForm() {
                     </Label>
                   </div>
                 )}
-
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="w-full md:w-auto"
-                  disabled={createProduct.isPending || updateProduct.isPending}
-                >
-                  <Save className="h-4 w-4 mr-1" />
-                  {isEdit ? "Update" : "Create"}
-                </Button>
               </form>
             </Form>
           </CardContent>

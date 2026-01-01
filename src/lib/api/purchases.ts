@@ -75,7 +75,7 @@ export async function updatePurchase(id: string, purchase: Partial<Purchase>) {
 export async function deletePurchase(id: string) {
   // First delete order lines
   await supabase.from('purchase_order_lines').delete().eq('purchase_id', id);
-  
+
   const { error } = await supabase
     .from('purchases')
     .delete()
@@ -110,7 +110,7 @@ export async function addPurchaseLine(line: {
 
 export async function updatePurchaseLine(id: string, line: Partial<PurchaseOrderLine>) {
   const updateData: Partial<PurchaseOrderLine> = { ...line };
-  
+
   // Recalculate subtotal if qty or cost changed
   if (line.qty_ordered !== undefined || line.unit_cost !== undefined) {
     const { data: current } = await supabase
@@ -118,7 +118,7 @@ export async function updatePurchaseLine(id: string, line: Partial<PurchaseOrder
       .select('qty_ordered, unit_cost')
       .eq('id', id)
       .single();
-    
+
     if (current) {
       const qty = line.qty_ordered ?? current.qty_ordered;
       const cost = line.unit_cost ?? current.unit_cost;
@@ -167,12 +167,12 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
     const someReceived = lines.some(l => l.qty_received > 0);
 
     const status = allReceived ? 'received' : someReceived ? 'partial' : 'ordered';
-    
+
     await supabase
       .from('purchases')
-      .update({ 
-        status, 
-        received_date: allReceived ? new Date().toISOString().split('T')[0] : null 
+      .update({
+        status,
+        received_date: allReceived ? new Date().toISOString().split('T')[0] : null
       })
       .eq('id', purchaseId);
 
@@ -183,7 +183,7 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
 
 // Trigger auto journal for purchase transactions
 export async function triggerAutoJournalPurchase(
-  purchaseId: string, 
+  purchaseId: string,
   paymentType: 'cash' | 'bank' | 'hutang',
   amount?: number,
   bankAccountId?: string
@@ -196,11 +196,14 @@ export async function triggerAutoJournalPurchase(
   return data;
 }
 
-// Generate next purchase number
+// Generate next purchase number (Daily sequence)
 export async function generatePurchaseNo() {
   const today = new Date();
-  const prefix = `PO-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}`;
-  
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const prefix = `PO-${year}${month}${day}`;
+
   const { data } = await supabase
     .from('purchases')
     .select('purchase_no')
@@ -212,6 +215,6 @@ export async function generatePurchaseNo() {
     const lastNo = parseInt(data[0].purchase_no.slice(-4)) || 0;
     return `${prefix}${String(lastNo + 1).padStart(4, '0')}`;
   }
-  
+
   return `${prefix}0001`;
 }

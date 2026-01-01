@@ -655,3 +655,26 @@ export async function triggerAutoJournalSales(
   if (error) throw error;
   return data;
 }
+
+// Generate next sales invoice number (Daily sequence)
+export async function generateSalesInvoiceNo() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const prefix = `INV-${year}${month}${day}`;
+
+  const { data } = await supabase
+    .from('sales_orders')
+    .select('desty_order_no')
+    .like('desty_order_no', `${prefix}%`)
+    .order('desty_order_no', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0) {
+    const lastNo = parseInt(data[0].desty_order_no.slice(-4)) || 0;
+    return `${prefix}${String(lastNo + 1).padStart(4, '0')}`;
+  }
+
+  return `${prefix}0001`;
+}

@@ -15,6 +15,7 @@ import PurchaseList from "@/pages/purchases/PurchaseList";
 import PurchaseForm from "@/pages/purchases/PurchaseForm";
 import SalesList from "@/pages/sales/SalesList";
 import InventoryList from "@/pages/inventory/InventoryList";
+import StockMovements from "@/pages/inventory/StockMovements";
 import AccountingPage from "@/pages/accounting/AccountingPage";
 import VirtualStockPage from "@/pages/virtual-stock/VirtualStockPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/purchases/:id" element={<PurchaseForm />} />
             <Route path="/sales" element={<SalesList />} />
             <Route path="/inventory" element={<InventoryList />} />
+            <Route path="/inventory/movements" element={<StockMovements />} />
             <Route path="/virtual-stock" element={<VirtualStockPage />} />
             <Route path="/accounting" element={<AccountingPage />} />
             <Route path="/settings" element={<SettingsPage />} />

@@ -21,6 +21,7 @@ interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   sortable?: boolean;
+  sortFn?: (a: T, b: T) => number; // Custom sort function
   filterable?: boolean;
   hideOnMobile?: boolean;
   primary?: boolean; // Primary columns show prominently on mobile card
@@ -72,28 +73,37 @@ export function DataTable<T extends { id: string }>({
   // Sort data
   const sortedData = useMemo(() => {
     if (!sortKey || !sortDirection) return filteredData;
-    
+
+    const column = columns.find(col => col.key === sortKey);
+
     return [...filteredData].sort((a, b) => {
+      // Use custom sortFn if provided
+      if (column?.sortFn) {
+        const result = column.sortFn(a, b);
+        return sortDirection === "asc" ? result : -result;
+      }
+
+      // Default sorting logic
       const aValue = (a as Record<string, unknown>)[sortKey];
       const bValue = (b as Record<string, unknown>)[sortKey];
-      
+
       if (aValue == null && bValue == null) return 0;
       if (aValue == null) return sortDirection === "asc" ? 1 : -1;
       if (bValue == null) return sortDirection === "asc" ? -1 : 1;
-      
+
       if (typeof aValue === "number" && typeof bValue === "number") {
         return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
       }
-      
+
       const aStr = String(aValue).toLowerCase();
       const bStr = String(bValue).toLowerCase();
-      
+
       if (sortDirection === "asc") {
         return aStr.localeCompare(bStr);
       }
       return bStr.localeCompare(aStr);
     });
-  }, [filteredData, sortKey, sortDirection]);
+  }, [filteredData, sortKey, sortDirection, columns]);
 
   const pagination = usePagination<T>({
     totalItems: sortedData.length,

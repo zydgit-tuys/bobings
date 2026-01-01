@@ -7,6 +7,7 @@ import {
   createSalesOrder,
   createSalesOrderWithJournal, // Add this
   updateSalesOrderWithJournal,
+  generateSalesInvoiceNo,
   type CreateSalesOrderInput
 } from '@/lib/api/sales';
 import type { DestyRow } from '@/types';
@@ -123,5 +124,13 @@ export function useSalesStats(period: 'today' | 'week' | 'month' | 'year') {
   return useQuery({
     queryKey: ['sales-stats', period],
     queryFn: () => getSalesStats(period),
+  });
+}
+
+// Generate Sales Invoice Number
+export function useGenerateSalesInvoiceNo() {
+  return useQuery({
+    queryKey: ['generate-sales-invoice-no'],
+    queryFn: generateSalesInvoiceNo,
   });
 }

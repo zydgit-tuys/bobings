@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  getChartOfAccounts, getAccount, createAccount,
+import {
+  getChartOfAccounts, getAccount, createAccount, generateAccountCode,
   getJournalEntries, getJournalEntry, createJournalEntry,
   getTrialBalance, getIncomeStatement, getBalanceSheet,
   getAccountingPeriods, createAccountingPeriod, closeAccountingPeriod, reopenAccountingPeriod
@@ -36,6 +36,14 @@ export function useCreateAccount() {
     onError: (error: Error) => {
       toast.error(`Failed to create account: ${error.message}`);
     },
+  });
+}
+
+export function useGenerateAccountCode(accountType: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense') {
+  return useQuery({
+    queryKey: ['generate-account-code', accountType],
+    queryFn: () => generateAccountCode(accountType),
+    enabled: !!accountType,
   });
 }
 
@@ -141,7 +149,7 @@ export function useReopenPeriod() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ periodId, password }: { periodId: string; password: string }) => 
+    mutationFn: ({ periodId, password }: { periodId: string; password: string }) =>
       reopenAccountingPeriod(periodId, password),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });

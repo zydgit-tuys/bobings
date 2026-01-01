@@ -28,11 +28,11 @@ interface Props {
   onImagesChange: (images: string[]) => void;
 }
 
-function SortableImageItem({ 
-  url, 
-  onRemove 
-}: { 
-  url: string; 
+function SortableImageItem({
+  url,
+  onRemove
+}: {
+  url: string;
   onRemove: () => void;
 }) {
   const {
@@ -63,19 +63,19 @@ function SortableImageItem({
         alt="Product"
         className="w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
         <button
           {...attributes}
           {...listeners}
-          className="p-1.5 bg-white/90 rounded cursor-grab hover:bg-white"
+          className="p-2 md:p-1.5 bg-white/90 rounded cursor-grab hover:bg-white touch-manipulation"
         >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+          <GripVertical className="h-5 w-5 md:h-4 md:w-4 text-muted-foreground" />
         </button>
         <button
           onClick={onRemove}
-          className="p-1.5 bg-red-500 rounded hover:bg-red-600"
+          className="p-2 md:p-1.5 bg-red-500 rounded hover:bg-red-600 touch-manipulation"
         >
-          <X className="h-4 w-4 text-white" />
+          <X className="h-5 w-5 md:h-4 md:w-4 text-white" />
         </button>
       </div>
     </div>
@@ -101,42 +101,35 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
     const newUrls: string[] = [];
 
     try {
+      const { uploadImage, validateImageFile } = await import('@/lib/utils/imageUpload');
+
       for (const file of Array.from(files)) {
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          toast.error(`${file.name} is not an image`);
+        // Validate file
+        const validationError = validateImageFile(file, 10); // Max 10MB
+        if (validationError) {
+          toast.error(`${file.name}: ${validationError}`);
           continue;
         }
 
-        // Validate file size (5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error(`${file.name} is too large (max 5MB)`);
-          continue;
+        try {
+          // Upload with WebP conversion & compression
+          const url = await uploadImage(file, {
+            folder: `products/${productId}`,
+            quality: 0.8,
+            maxWidth: 1920,
+            maxHeight: 1920,
+          });
+
+          newUrls.push(url);
+        } catch (error: any) {
+          toast.error(`Failed to upload ${file.name}: ${error.message}`);
+          console.error(error);
         }
-
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${productId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('product-images')
-          .upload(fileName, file);
-
-        if (uploadError) {
-          toast.error(`Failed to upload ${file.name}`);
-          console.error(uploadError);
-          continue;
-        }
-
-        const { data: publicUrl } = supabase.storage
-          .from('product-images')
-          .getPublicUrl(fileName);
-
-        newUrls.push(publicUrl.publicUrl);
       }
 
       if (newUrls.length > 0) {
         onImagesChange([...images, ...newUrls]);
-        toast.success(`${newUrls.length} image(s) uploaded`);
+        toast.success(`${newUrls.length} image(s) uploaded (WebP, compressed)`);
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -151,20 +144,14 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
 
   const handleRemove = async (urlToRemove: string) => {
     try {
-      // Extract file path from URL
-      const url = new URL(urlToRemove);
-      const pathParts = url.pathname.split('/');
-      const bucketIndex = pathParts.findIndex(p => p === 'product-images');
-      if (bucketIndex !== -1) {
-        const filePath = pathParts.slice(bucketIndex + 1).join('/');
-        await supabase.storage.from('product-images').remove([filePath]);
-      }
-    } catch (error) {
-      console.error('Failed to delete from storage:', error);
+      const { deleteImage } = await import('@/lib/utils/imageUpload');
+      await deleteImage(urlToRemove);
+      onImagesChange(images.filter(url => url !== urlToRemove));
+      toast.success('Image removed');
+    } catch (error: any) {
+      console.error('Failed to delete:', error);
+      toast.error('Failed to delete image');
     }
-
-    onImagesChange(images.filter(url => url !== urlToRemove));
-    toast.success('Image removed');
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -225,7 +212,7 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
           </SortableContext>
         </DndContext>
       ) : (
-        <div 
+        <div
           className="border-2 border-dashed rounded-lg p-6 text-center text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
           onClick={() => inputRef.current?.click()}
         >

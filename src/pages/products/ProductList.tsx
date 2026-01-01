@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { useProducts, useDeleteProduct } from "@/hooks/use-products";
+import { useProducts, useDeleteProduct, useUpdateProduct } from "@/hooks/use-products";
+import { Switch } from "@/components/ui/switch";
 
 interface ProductListProps {
   embedded?: boolean;
@@ -15,6 +16,7 @@ export default function ProductList({ embedded = false }: ProductListProps) {
   const navigate = useNavigate();
   const { data: products, isLoading } = useProducts();
   const deleteProduct = useDeleteProduct();
+  const updateProduct = useUpdateProduct();
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const columns = [
@@ -60,6 +62,23 @@ export default function ProductList({ embedded = false }: ProductListProps) {
       key: "variants",
       header: "Variant",
       render: (item: any) => item.product_variants?.length ?? 0,
+    },
+    {
+      key: "is_active",
+      header: "Status",
+      sortable: false,
+      render: (item: any) => (
+        <Switch
+          checked={item.is_active}
+          onCheckedChange={(checked) => {
+            updateProduct.mutate({
+              id: item.id,
+              data: { is_active: checked },
+            });
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
     },
     {
       key: "actions",

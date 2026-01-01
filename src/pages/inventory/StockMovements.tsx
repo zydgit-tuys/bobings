@@ -70,11 +70,10 @@ export function StockMovements() {
       </div>
       <div className="flex items-center justify-between">
         <span
-          className={`font-medium ${
-            ["IN", "RETURN"].includes(item.movement_type)
+          className={`font-medium ${["IN", "RETURN"].includes(item.movement_type)
               ? "text-green-600"
               : "text-destructive"
-          }`}
+            }`}
         >
           {["IN", "RETURN"].includes(item.movement_type) ? "+" : "-"}
           {item.qty}
@@ -99,3 +98,5 @@ export function StockMovements() {
     />
   );
 }
+
+export default StockMovements;

@@ -38,6 +38,33 @@ export async function createAccount(account: Omit<ChartOfAccount, 'id'>) {
   return data;
 }
 
+// Generate next account code based on account type
+export async function generateAccountCode(accountType: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense') {
+  const prefixMap = {
+    asset: '1',
+    liability: '2',
+    equity: '3',
+    revenue: '4',
+    expense: '5',
+  };
+
+  const prefix = prefixMap[accountType];
+
+  const { data } = await supabase
+    .from('chart_of_accounts')
+    .select('code')
+    .like('code', `${prefix}-%`)
+    .order('code', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0) {
+    const lastNo = parseInt(data[0].code.split('-')[1]) || 0;
+    return `${prefix}-${String(lastNo + 1).padStart(3, '0')}`;
+  }
+
+  return `${prefix}-001`;
+}
+
 // ============================================
 // JOURNAL ENTRIES API
 // ============================================
@@ -105,7 +132,7 @@ export async function createJournalEntry(entry: {
   // Validate balanced entry
   const totalDebit = entry.lines.reduce((sum, l) => sum + l.debit, 0);
   const totalCredit = entry.lines.reduce((sum, l) => sum + l.credit, 0);
-  
+
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
     throw new Error('Journal entry must be balanced (debit = credit)');
   }
@@ -283,7 +310,7 @@ export async function reopenAccountingPeriod(periodId: string, password: string)
     .single();
 
   if (settingsError) throw new Error('Gagal verifikasi password');
-  
+
   if (settings.setting_value !== password) {
     throw new Error('Password admin salah');
   }
