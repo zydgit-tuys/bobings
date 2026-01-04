@@ -71,7 +71,7 @@ export function AccountingPeriods() {
 
   const handleClosePeriod = async () => {
     if (!selectedPeriod) return;
-    
+
     try {
       await closePeriod.mutateAsync(selectedPeriod.id);
       setShowCloseDialog(false);
@@ -83,11 +83,11 @@ export function AccountingPeriods() {
 
   const handleReopenPeriod = async () => {
     if (!selectedPeriod || !adminPassword) return;
-    
+
     try {
-      await reopenPeriod.mutateAsync({ 
-        periodId: selectedPeriod.id, 
-        password: adminPassword 
+      await reopenPeriod.mutateAsync({
+        periodId: selectedPeriod.id,
+        password: adminPassword
       });
       setShowReopenDialog(false);
       setSelectedPeriod(null);
@@ -140,7 +140,7 @@ export function AccountingPeriods() {
           const period = getPeriodForMonth(month.startDate);
           const isClosed = period?.status === 'closed';
           const isOpen = period?.status === 'open';
-          
+
           return (
             <Card key={month.month} className={`${isClosed ? 'bg-muted/50' : ''}`}>
               <CardHeader className="pb-2">
@@ -289,7 +289,7 @@ export function AccountingPeriods() {
           <DialogHeader>
             <DialogTitle>Tutup Periode Akuntansi</DialogTitle>
             <DialogDescription>
-              Anda akan menutup periode <strong>{selectedPeriod?.period_name}</strong>. 
+              Anda akan menutup periode <strong>{selectedPeriod?.period_name}</strong>.
               Setelah ditutup, tidak ada jurnal yang dapat dibuat pada periode ini.
             </DialogDescription>
           </DialogHeader>
@@ -302,8 +302,8 @@ export function AccountingPeriods() {
             <Button variant="outline" onClick={() => setShowCloseDialog(false)}>
               Batal
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleClosePeriod}
               disabled={closePeriod.isPending}
             >
@@ -323,23 +323,23 @@ export function AccountingPeriods() {
           <DialogHeader>
             <DialogTitle>Buka Kembali Periode</DialogTitle>
             <DialogDescription>
-              Anda akan membuka kembali periode <strong>{selectedPeriod?.period_name}</strong>. 
-              Masukkan password admin untuk melanjutkan.
+              Anda akan membuka kembali periode <strong>{selectedPeriod?.period_name}</strong>.
+              Masukkan password login Anda untuk melanjutkan.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="admin-password">Password Admin</Label>
+              <Label htmlFor="admin-password">Password Login</Label>
               <Input
                 id="admin-password"
                 type="password"
-                placeholder="Masukkan password admin"
+                placeholder="Masukkan password login Anda"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Password default: admin123 (harap ganti segera)
+              Gunakan password yang sama dengan saat login ke aplikasi
             </p>
           </div>
           <DialogFooter>
@@ -349,7 +349,7 @@ export function AccountingPeriods() {
             }}>
               Batal
             </Button>
-            <Button 
+            <Button
               onClick={handleReopenPeriod}
               disabled={reopenPeriod.isPending || !adminPassword}
             >

@@ -52,10 +52,22 @@ export function useJournalEntries(filters?: {
   startDate?: string;
   endDate?: string;
   referenceType?: string;
+  referenceId?: string;
 }) {
   return useQuery({
     queryKey: ['journal-entries', filters],
     queryFn: () => getJournalEntries(filters),
+  });
+}
+
+export function useJournalByReference(referenceId: string) {
+  return useQuery({
+    queryKey: ['journal-entries', { referenceId }],
+    queryFn: async () => {
+      const entries = await getJournalEntries({ referenceId });
+      return entries?.[0] || null;
+    },
+    enabled: !!referenceId,
   });
 }
 

@@ -16,37 +16,42 @@ interface AccountMapping {
   category: string;
 }
 
+// Asset & Liability accounts (Bank dikelola di tab Akun Bank)
+// Full V1 Account Mapping Configuration
 const ACCOUNT_MAPPINGS: AccountMapping[] = [
-  // Asset & Liability accounts (Bank dikelola di tab Akun Bank)
-  { key: SETTING_KEYS.ACCOUNT_KAS, label: "Kas", description: "Akun untuk pembayaran tunai", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_PERSEDIAAN, label: "Persediaan", description: "Akun untuk nilai inventaris", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_HUTANG_SUPPLIER, label: "Hutang Supplier", description: "Akun untuk hutang pembelian", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_PIUTANG_MARKETPLACE, label: "Piutang Marketplace", description: "Akun untuk piutang dari marketplace", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_HPP, label: "HPP", description: "Akun untuk harga pokok penjualan", category: "Umum" },
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_PENYESUAIAN_STOK, label: "Biaya Penyesuaian Stok", description: "Akun untuk adjustment stok", category: "Umum" },
+  // 1. ASSET (KAS & BANK)
+  { key: SETTING_KEYS.ACCOUNT_KAS, label: "Kas", description: "Akun Kas Utama (Default)", category: "1. Asset (Kas & Bank)" },
 
-  // Revenue accounts
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_SHOPEE, label: "Penjualan Shopee", description: "Akun pendapatan dari Shopee", category: "Pendapatan" },
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_TOKOPEDIA, label: "Penjualan Tokopedia", description: "Akun pendapatan dari Tokopedia", category: "Pendapatan" },
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_LAZADA, label: "Penjualan Lazada", description: "Akun pendapatan dari Lazada", category: "Pendapatan" },
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_TIKTOK, label: "Penjualan TikTok", description: "Akun pendapatan dari TikTok Shop", category: "Pendapatan" },
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_LAINNYA, label: "Penjualan Lainnya", description: "Akun pendapatan dari marketplace lain", category: "Pendapatan" },
+  // 2. RECEIVABLE (PIUTANG)
+  { key: SETTING_KEYS.ACCOUNT_PIUTANG_USAHA, label: "Piutang Usaha", description: "Piutang usaha default", category: "2. Asset (Piutang)" },
 
-  // Admin fee accounts
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_SHOPEE, label: "Biaya Admin Shopee", description: "Akun biaya admin Shopee", category: "Biaya Admin" },
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_TOKOPEDIA, label: "Biaya Admin Tokopedia", description: "Akun biaya admin Tokopedia", category: "Biaya Admin" },
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_LAZADA, label: "Biaya Admin Lazada", description: "Akun biaya admin Lazada", category: "Biaya Admin" },
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_TIKTOK, label: "Biaya Admin TikTok", description: "Akun biaya admin TikTok", category: "Biaya Admin" },
+  // 3. INVENTORY (PERSEDIAAN)
+  { key: SETTING_KEYS.ACCOUNT_PERSEDIAAN_BARANG_BELI_JADI, label: "Persediaan Barang Dagang", description: "Nilai stok barang trading/beli jadi", category: "3. Asset (Persediaan)" },
 
-  // Generic / Default Accounts (Fallback)
-  { key: SETTING_KEYS.ACCOUNT_PENJUALAN, label: "Penjualan (Default)", description: "Akun penjualan default jika spesifik marketplace tidak ada", category: "Default / Fallback" },
-  { key: SETTING_KEYS.ACCOUNT_PIUTANG, label: "Piutang (Default)", description: "Akun piutang default", category: "Default / Fallback" },
-  { key: SETTING_KEYS.ACCOUNT_BIAYA_ADMIN, label: "Biaya Admin (Default)", description: "Akun biaya admin default", category: "Default / Fallback" },
+  // 4. LIABILITY (HUTANG)
+  { key: SETTING_KEYS.ACCOUNT_HUTANG_SUPPLIER, label: "Hutang Usaha", description: "Hutang kepada supplier", category: "4. Liability" },
 
-  // Misc Accounts
-  { key: SETTING_KEYS.ACCOUNT_RETUR_PENJUALAN, label: "Retur Penjualan", description: "Akun kontra pendapatan untuk retur", category: "Lainnya" },
-  { key: SETTING_KEYS.ACCOUNT_DISKON_PENJUALAN, label: "Diskon Penjualan", description: "Akun kontra pendapatan untuk diskon", category: "Lainnya" },
-  { key: SETTING_KEYS.ACCOUNT_PENDAPATAN_ONGKIR, label: "Pendapatan Ongkir", description: "Akun untuk selisih ongkir / pendapatan kirim", category: "Lainnya" },
+  // 5. REVENUE (PENJUALAN)
+  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_PRODUK_BELI_JADI, label: "Penjualan Barang Dagang", description: "Omzet penjualan barang trading", category: "5. Revenue" },
+  { key: SETTING_KEYS.ACCOUNT_PENJUALAN_MANUAL, label: "Penjualan Manual/Offline", description: "Omzet penjualan offline/direct", category: "5. Revenue" },
+
+  // 6. COGS (HPP)
+  { key: SETTING_KEYS.ACCOUNT_HPP_BELI_JADI, label: "HPP Barang Dagang", description: "Harga Pokok Penjualan (Trading)", category: "6. COGS / HPP" },
+
+  // 7. EXPENSES (BIAYA MARKETPLACE)
+  // Tidak ditampilkan karena menggunakan Mapping V2 atau Net Settlement.
+  // Jika dibutuhkan fallback, tambahkan 'Biaya Admin Marketplace' generic di sini.
+
+  // 8. EXPENSES (PRODUCTION) -> Removed (Trading Model)
+
+  // 9. CONTRA & ADJUSTMENT
+  { key: SETTING_KEYS.ACCOUNT_DISKON_PENJUALAN, label: "Diskon Penjualan", description: "Potongan harga ke customer", category: "9. Contra & Others" },
+  { key: SETTING_KEYS.ACCOUNT_DISKON_PEMBELIAN, label: "Diskon Pembelian", description: "Potongan harga dari supplier", category: "9. Contra & Others" },
+  { key: SETTING_KEYS.ACCOUNT_BIAYA_PENYESUAIAN_STOK, label: "Penyesuaian Stok (Gain/Loss)", description: "Akun selisih stok opname/adjustment", category: "9. Contra & Others" },
+
+  // 10. EQUITY
+  { key: SETTING_KEYS.ACCOUNT_MODAL_PEMILIK, label: "Modal Pemilik", description: "Setoran modal owner", category: "10. Equity" },
+  { key: SETTING_KEYS.ACCOUNT_LABA_DITAHAN, label: "Laba Ditahan", description: "Akumulasi laba tahun lalu", category: "10. Equity" },
 ];
 
 export function AccountMappingSettings() {
@@ -129,11 +134,7 @@ export function AccountMappingSettings() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{category}</CardTitle>
             <CardDescription>
-              {category === "Umum" && "Akun-akun dasar untuk transaksi umum"}
-              {category === "Pendapatan" && "Akun pendapatan per marketplace"}
-              {category === "Biaya Admin" && "Akun biaya admin per marketplace"}
-              {category === "Default / Fallback" && "Akun cadangan jika mapping spesifik tidak ditemukan"}
-              {category === "Lainnya" && "Akun tambahan untuk Retur, Diskon, dll"}
+              Konfigurasi akun untuk kategori {category}
             </CardDescription>
           </CardHeader>
           <CardContent>

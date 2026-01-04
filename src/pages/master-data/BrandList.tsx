@@ -2,17 +2,19 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/shared/DataTable";
 import { MobileCardList } from "@/components/shared/MobileCardList";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useBrands, useCreateBrand } from "@/hooks/use-products";
-import { supabase } from "@/integrations/supabase/client";
+import { Switch } from "@/components/ui/switch";
+import { useBrands, useCreateBrand, useUpdateBrand } from "@/hooks/use-products";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -24,18 +26,33 @@ export function BrandList() {
   const queryClient = useQueryClient();
   const { data: brands, isLoading } = useBrands();
   const createBrand = useCreateBrand();
-  
+  const updateBrand = useUpdateBrand();
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<any>(null);
-  const [brandName, setBrandName] = useState("");
+  const [formData, setFormData] = useState({ name: "", is_active: true });
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const columns = [
     { key: "name", header: "Brand Name" },
     {
+      key: "is_active",
+      header: "Status",
+      render: (item: any) => (
+        <Badge variant={item.is_active ? "default" : "secondary"}>
+          {item.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    {
       key: "created_at",
       header: "Created",
       render: (item: any) => new Date(item.created_at).toLocaleDateString("id-ID"),
+    },
+    {
+      key: "updated_at",
+      header: "Last Updated",
+      render: (item: any) => new Date(item.updated_at).toLocaleDateString("id-ID"),
     },
     {
       key: "actions",
@@ -69,63 +86,66 @@ export function BrandList() {
 
   const handleEdit = (brand: any) => {
     setEditingBrand(brand);
-    setBrandName(brand.name);
+    setFormData({ name: brand.name, is_active: brand.is_active });
     setDialogOpen(true);
   };
 
   const handleAdd = () => {
     setEditingBrand(null);
-    setBrandName("");
+    setFormData({ name: "", is_active: true });
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!brandName.trim()) {
+    if (!formData.name.trim()) {
       toast.error("Brand name is required");
       return;
     }
 
     try {
       if (editingBrand) {
-        const { error } = await supabase
-          .from("brands")
-          .update({ name: brandName.trim() })
-          .eq("id", editingBrand.id);
-        if (error) throw error;
-        toast.success("Brand updated");
+        await updateBrand.mutateAsync({
+          id: editingBrand.id,
+          data: { name: formData.name.trim(), is_active: formData.is_active }
+        });
       } else {
-        await createBrand.mutateAsync(brandName.trim());
+        await createBrand.mutateAsync({
+          name: formData.name.trim(),
+          is_active: formData.is_active
+        });
       }
       setDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
     } catch (error: any) {
-      toast.error(error.message);
+      // Error handled by hook
     }
   };
 
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      const { error } = await supabase
-        .from("brands")
-        .update({ is_active: false })
-        .eq("id", deleteId);
-      if (error) throw error;
-      toast.success("Brand deleted");
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
+      await updateBrand.mutateAsync({
+        id: deleteId,
+        data: { is_active: false }
+      });
       setDeleteId(null);
+    } catch (error: any) {
+      // Error handled by hook
     }
   };
 
   const renderBrandCard = (brand: any) => (
     <div className="p-4">
-      <p className="font-medium text-foreground">{brand.name}</p>
-      <p className="text-sm text-muted-foreground">
-        Created: {new Date(brand.created_at).toLocaleDateString("id-ID")}
-      </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-medium text-foreground">{brand.name}</p>
+          <p className="text-sm text-muted-foreground">
+            Created: {new Date(brand.created_at).toLocaleDateString("id-ID")}
+          </p>
+        </div>
+        <Badge variant={brand.is_active ? "default" : "secondary"}>
+          {brand.is_active ? "Active" : "Inactive"}
+        </Badge>
+      </div>
     </div>
   );
 
@@ -173,16 +193,27 @@ export function BrandList() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingBrand ? "Edit Brand" : "Add Brand"}</DialogTitle>
+            <DialogDescription>
+              {editingBrand ? "Perbarui informasi brand yang sudah ada." : "Tambahkan brand produk baru ke sistem."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="brandName">Brand Name</Label>
               <Input
                 id="brandName"
-                value={brandName}
-                onChange={(e) => setBrandName(e.target.value)}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Enter brand name"
               />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="isActive"
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+              <Label htmlFor="isActive">Active Status</Label>
             </div>
           </div>
           <DialogFooter>

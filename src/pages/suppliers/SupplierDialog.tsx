@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -112,6 +113,11 @@ export function SupplierDialog({ open, onOpenChange, supplier }: SupplierDialogP
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Supplier" : "Add Supplier"}</DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Perbarui informasi supplier yang sudah ada."
+              : "Tambahkan supplier baru untuk mengelola pembelian barang."}
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

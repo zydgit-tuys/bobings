@@ -15,6 +15,9 @@ const SETTING_KEYS = {
     ACCOUNT_PIUTANG: 'account_piutang',
     ACCOUNT_PENJUALAN: 'account_penjualan',
     ACCOUNT_HPP: 'account_hpp',
+    ACCOUNT_HPP_PRODUCTION: 'account_hpp_production',
+    ACCOUNT_HPP_PURCHASED: 'account_hpp_purchased',
+    ACCOUNT_HPP_SERVICE: 'account_hpp_service',
     ACCOUNT_PERSEDIAAN: 'account_persediaan',
 
     // Revenue specific
@@ -63,7 +66,22 @@ serve(async (req: Request) => {
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-        const { salesOrderId, paymentMethod, amount, is_return } = await req.json();
+        // Check accounting period status
+        const { data: periodStatus, error: periodError } = await supabase
+            .rpc('get_current_period_status')
+            .single();
+
+        if (periodError) {
+            console.error('Error checking period status:', periodError);
+            throw new Error('Unable to verify accounting period status');
+        }
+
+        if (!periodStatus.is_open) {
+            console.error('Period not open:', periodStatus.message);
+            throw new Error(periodStatus.message);
+        }
+
+        const { salesOrderId, paymentMethod, amount, paymentAccountId, discountAmount: reqDiscountAmount, is_return, is_credit_note } = await req.json();
 
         if (!salesOrderId) {
             throw new Error('Missing salesOrderId');
@@ -78,7 +96,8 @@ serve(async (req: Request) => {
                    subtotal,
                    hpp,
                    qty,
-                   product_name
+                   product_name,
+                   variant_id
                 )
             `)
             .eq('id', salesOrderId)
@@ -90,39 +109,83 @@ serve(async (req: Request) => {
 
         console.log(`Processing Order: ${order.desty_order_no}, Total: ${order.total_amount}`);
 
-        // 2. Determine Account Keys based on Marketplace
+        // 2. Marketplace info for context (reporting only, not for account selection)
         const marketplace = (order.marketplace || 'Lainnya').toLowerCase();
-        let salesKey = 'account_penjualan'; // Default/Generic
+
+        // Fee key still based on marketplace (for expense accounts)
         let feeKey = 'account_biaya_admin'; // Default/Generic
 
         if (marketplace.includes('shopee')) {
-            salesKey = SETTING_KEYS.ACCOUNT_PENJUALAN_SHOPEE;
             feeKey = SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_SHOPEE;
         } else if (marketplace.includes('tokopedia')) {
-            salesKey = SETTING_KEYS.ACCOUNT_PENJUALAN_TOKOPEDIA;
             feeKey = SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_TOKOPEDIA;
         } else if (marketplace.includes('lazada')) {
-            salesKey = SETTING_KEYS.ACCOUNT_PENJUALAN_LAZADA;
             feeKey = SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_LAZADA;
         } else if (marketplace.includes('tiktok')) {
-            salesKey = SETTING_KEYS.ACCOUNT_PENJUALAN_TIKTOK;
             feeKey = SETTING_KEYS.ACCOUNT_BIAYA_ADMIN_TIKTOK;
         }
 
-        // 3. Fetch All Relevant Settings (Parallel)
+        // 3. V2 MAPPING LOOKUP (Priority)
+        const getAccountFromV2 = async (
+            eventType: string,
+            context: string,
+            side: 'debit' | 'credit',
+            mplCode: string | null = null
+        ): Promise<string | null> => {
+            let query = supabase
+                .from('journal_account_mappings')
+                .select('account_id, priority')
+                .eq('event_type', eventType)
+                .eq('side', side)
+                .eq('is_active', true);
+
+            // Context filter (exact match or null/wildcard)
+            if (context) {
+                query = query.or(`event_context.eq.${context},event_context.is.null`);
+            } else {
+                query = query.is('event_context', null);
+            }
+
+            // Marketplace filter
+            if (mplCode) {
+                query = query.or(`marketplace_code.eq.${mplCode},marketplace_code.is.null`);
+            } else {
+                query = query.is('marketplace_code', null);
+            }
+
+            // Order by priority desc to get specific match first
+            const { data, error } = await query.order('priority', { ascending: false }).limit(1).maybeSingle();
+
+            if (error) {
+                console.error("V2 Mapping Error:", error);
+                return null;
+            }
+            return data?.account_id || null;
+        };
+
+        // Determine Context & Marketplace Code for V2
+        const eventContext = marketplace.includes('offline') || marketplace.includes('manual') ? 'manual' : 'marketplace';
+        let mplCode = null;
+        if (marketplace.includes('shopee')) mplCode = 'shopee';
+        if (marketplace.includes('tokopedia')) mplCode = 'tokopedia';
+        if (marketplace.includes('tiktok')) mplCode = 'tiktok';
+        if (marketplace.includes('lazada')) mplCode = 'lazada';
+
+        // Fetch References
+        console.log(`🔎 Resolving Accounts (V2 -> V1 Fallback) for ${marketplace}...`);
+
+        // Fetch All Relevant Settings (V1 Fallback)
         const settingKeys = [
             SETTING_KEYS.ACCOUNT_KAS,
             SETTING_KEYS.ACCOUNT_BANK,
-            'account_piutang', // Generic Piutang
-            'account_penjualan', // Generic Sales (Fallback)
-            'account_biaya_admin', // Generic Fee (Fallback)
-            'account_hpp',
-            'account_persediaan',
-            'account_retur_penjualan', // New
-            'account_diskon_penjualan', // New (Seller Discount)
-            'account_pendapatan_ongkir', // New (Shipping Income)
-            salesKey, // Specific Sales
-            feeKey    // Specific Fee
+            SETTING_KEYS.ACCOUNT_PIUTANG,
+            SETTING_KEYS.ACCOUNT_PENJUALAN,
+            SETTING_KEYS.ACCOUNT_HPP,
+            SETTING_KEYS.ACCOUNT_PERSEDIAAN,
+            SETTING_KEYS.ACCOUNT_DISKON_PENJUALAN,
+            SETTING_KEYS.ACCOUNT_RETUR_PENJUALAN,
+            'account_penjualan_produksi',
+            'account_pendapatan_jasa'
         ];
 
         const { data: settings, error: settingsError } = await supabase
@@ -134,50 +197,67 @@ serve(async (req: Request) => {
 
         const settingMap = new Map<string, string>(settings?.map((s: any) => [s.setting_key, s.setting_value]) || []);
 
-        // Helper to get with fallback
-        const getAccount = (specificKey: string, fallbackKey?: string, required = true): string => {
-            let val = settingMap.get(specificKey);
+        const getAccount = (key: string, fallbackKey?: string): string => {
+            let val = settingMap.get(key);
             if (!val && fallbackKey) val = settingMap.get(fallbackKey);
-            if (!val && required) throw new Error(`Missing Account Mapping: ${specificKey} (and fallback ${fallbackKey || 'none'})`);
             return val || '';
         };
 
-        const accountKas = getAccount(SETTING_KEYS.ACCOUNT_KAS);
-        const accountBank = getAccount(SETTING_KEYS.ACCOUNT_BANK);
-        const accountHpp = getAccount('account_hpp');
-        const accountPersediaan = getAccount('account_persediaan');
+        // Group revenue by product_type from order items
+        const revenueByType: Record<string, number> = {
+            production: 0,
+            purchased: 0,
+            service: 0
+        };
 
-        // Dynamic Resolution
-        const accountPenjualan = getAccount(salesKey, 'account_penjualan');
-        const accountBiayaAdmin = getAccount(feeKey, 'account_biaya_admin', false); // Optional if no fee
-        const accountPiutang = getAccount('account_piutang');
+        for (const item of order.order_items || []) {
+            if (!item.variant_id) continue;
 
-        // Misc Accounts
-        const accountRetur = getAccount('account_retur_penjualan', 'account_penjualan'); // Fallback to Sales if no Return acc
-        const accountDiskon = getAccount('account_diskon_penjualan', 'account_penjualan', false); // Optional (contra revenue)
-        const accountOngkir = getAccount('account_pendapatan_ongkir', 'account_penjualan', false); // Optional
+            const { data: variant } = await supabase
+                .from('product_variants')
+                .select('products(product_type)')
+                .eq('id', item.variant_id)
+                .single();
 
-        // 4. Determine Money Account (Cash/Bank/Piutang)
-        let moneyAccountId = '';
-        let moneyAccountName = '';
+            const productType = variant?.products?.product_type || 'purchased';
+            const itemRevenue = (item.qty || 0) * (item.unit_price || 0);
 
-        if (paymentMethod === 'cash') {
-            moneyAccountId = accountKas;
-            moneyAccountName = 'Kas';
-        } else if (paymentMethod === 'bank') {
-            moneyAccountId = accountBank;
-            moneyAccountName = 'Bank';
-        } else {
-            moneyAccountId = accountPiutang;
-            moneyAccountName = 'Piutang Usaha';
+            revenueByType[productType] += itemRevenue;
         }
 
-        // 5. Create Header
-        const description = is_return
-            ? `Retur Penjualan ${order.desty_order_no} (${moneyAccountName})`
-            : `Penjualan ${order.desty_order_no} (${moneyAccountName})`;
+        console.log('📊 Revenue by Product Type:', revenueByType);
 
-        // Total Journal Debit = derived from lines, but we put order total for overview
+        // Get revenue accounts for each product type
+        const getRevenueAccount = async (productType: string): Promise<string> => {
+            // Try V2 mapping first (without product_type parameter for now)
+            const v2Account = await getAccountFromV2('confirm_sales_order', eventContext, 'credit', mplCode);
+
+            if (v2Account) return v2Account;
+
+            // Fallback to V1 settings based on product type
+            if (productType === 'service') {
+                return getAccount('account_pendapatan_jasa', SETTING_KEYS.ACCOUNT_PENJUALAN);
+            } else if (productType === 'production') {
+                return getAccount('account_penjualan_produksi', SETTING_KEYS.ACCOUNT_PENJUALAN);
+            } else {
+                // purchased or default
+                return getAccount(SETTING_KEYS.ACCOUNT_PENJUALAN, SETTING_KEYS.ACCOUNT_PENJUALAN);
+            }
+        };
+
+        // Final Account Resolution
+        const accountPiutang = await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) || getAccount(SETTING_KEYS.ACCOUNT_PIUTANG);
+        const accountDiskon = getAccount(SETTING_KEYS.ACCOUNT_DISKON_PENJUALAN, SETTING_KEYS.ACCOUNT_PENJUALAN);
+        const accountHpp = getAccount(SETTING_KEYS.ACCOUNT_HPP);
+        const accountPersediaan = getAccount(SETTING_KEYS.ACCOUNT_PERSEDIAAN);
+        const accountKasDefault = getAccount(SETTING_KEYS.ACCOUNT_KAS);
+        const accountBankDefault = getAccount(SETTING_KEYS.ACCOUNT_BANK);
+
+        // 4. Create Header
+        const description = is_return
+            ? `Retur Penjualan ${order.desty_order_no}`
+            : `Penjualan ${order.desty_order_no}`;
+
         const { data: journalEntry, error: entryError } = await supabase
             .from('journal_entries')
             .insert({
@@ -185,7 +265,7 @@ serve(async (req: Request) => {
                 reference_type: 'sales_order',
                 reference_id: order.id,
                 description,
-                total_debit: 0, // Will be updated by trigger usually, or we set 0
+                total_debit: 0,
                 total_credit: 0,
             })
             .select()
@@ -193,122 +273,219 @@ serve(async (req: Request) => {
 
         if (entryError) throw entryError;
 
-        // 6. Create Lines
+        // 5. Create Lines (GROSS METHOD)
         const lines = [];
 
-        // Extract values
-        const grossAmount = Number(order.total_amount) || 0; // Does this include discount? Usually Total = Subtotal - Discount + Fee?
-        // Let's assume order.total_amount is the FINAL NET from customer perspective? 
-        // Need to check specific fields like seller_discount, etc. if available.
-        // For simplicity, we stick to:
-        // Net Cash Received = Total Amount - Fees
-
-        const fees = Number(order.total_fees) || 0;
+        // Values from Database (Pre-calculated/Frozen)
+        const grossTotal = Number(order.total_amount) || 0; // Standard POS: This is GROSS
+        const discountVal = Number(reqDiscountAmount) ?? Number(order.discount_amount) ?? 0;
+        const paidAmount = Number(amount) ?? Number(order.paid_amount) ?? 0;
         const totalHpp = Number(order.total_hpp) || 0;
-        const netReceivable = grossAmount - fees;
 
-        // Is there a Seller Discount? 
-        // Desty data might have it, but do we have it on sales_orders table?
-        // Looking at schema from previous context... createSalesOrder doesn't explicitly save seller_discount to a column, 
-        // it just calculates profit. Wait, parseDestyFile has 'sellerDiscount'.
-        // Let's assume for now we work with the totals we have. 
-        // Ideally we should save discount to db.
+        if (is_credit_note) {
+            console.log('📝 Processing Credit Note...');
+
+            // 1. Resolve Accounts for Credit Note (V2 Priority)
+            // Revenue Account (Normal Credit side -> targeted for negative credit)
+            const revenueAccount = await getAccountFromV2('credit_note', eventContext, 'credit', mplCode)
+                || await getRevenueAccount('purchased'); // Fallback to sales revenue
+
+            // AR Account (Normal Debit side -> targeted for negative debit)
+            const arAccount = await getAccountFromV2('credit_note', eventContext, 'debit', mplCode)
+                || accountPiutang;
+
+            // Optional: HPP Reversal (Only if stock impact is implied/requested, usually CN is financial)
+            // For now, we assume CN is financial only (price adjustment/refund) unless specified otherwise.
+
+            // 2. Create Header
+            const { data: cnEntry, error: cnError } = await supabase
+                .from('journal_entries')
+                .insert({
+                    entry_date: new Date().toISOString().split('T')[0],
+                    reference_type: 'sales_order',
+                    reference_id: order.id,
+                    description: `Credit Note ${order.desty_order_no}`,
+                    total_debit: 0,
+                    total_credit: 0, // Amounts are negative, so total absolute movement might need tracking? standard is 0 sum.
+                })
+                .select()
+                .single();
+
+            if (cnError) throw cnError;
+
+            // 3. Create Negative Journal Lines (Contra-Entry)
+            // Debit Revenue (Negative Credit) & Credit AR (Negative Debit) to reduce balances
+            lines.push({
+                entry_id: cnEntry.id, account_id: revenueAccount,
+                debit: 0, credit: -grossTotal,
+                description: `Credit Note Revenue ${order.desty_order_no}`
+            });
+            lines.push({
+                entry_id: cnEntry.id, account_id: arAccount,
+                debit: -grossTotal, credit: 0,
+                description: `Credit Note Piutang ${order.desty_order_no}`
+            });
+
+            // Insert Lines
+            const { error: linesError } = await supabase
+                .from('journal_lines')
+                .insert(lines);
+
+            if (linesError) throw linesError;
+
+            console.log('✅ Credit Note Journal Created Successfully');
+            return new Response(
+                JSON.stringify({ success: true, journalId: cnEntry.id }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
 
         if (is_return) {
-            // === RETURN LOGIC ===
-            // Reverse Revenue
+            // RETURN LOGIC (SIMPLIFIED REVERSAL)
+            // 1. Dr Revenue (Retur), Cr AR
             lines.push({
-                entry_id: journalEntry.id, account_id: accountRetur || accountPenjualan,
-                debit: grossAmount, credit: 0,
-                description: `Retur Penjualan`
+                entry_id: journalEntry.id, account_id: getAccount(SETTING_KEYS.ACCOUNT_RETUR_PENJUALAN, SETTING_KEYS.ACCOUNT_PENJUALAN),
+                debit: grossTotal, credit: 0, description: `Retur Penjualan`
             });
-
-            // Reverse Receivables / Cash
-            if (netReceivable > 0) {
-                lines.push({
-                    entry_id: journalEntry.id, account_id: moneyAccountId,
-                    debit: 0, credit: netReceivable,
-                    description: `Pengembalian Dana`
-                });
-            }
-
-            // Reverse Fees (Admin Charges Refunded)
-            if (fees > 0) {
-                // Credit Expense (Contra-expense or just Credit Expense Account)
-                const feeAcc = accountBiayaAdmin || moneyAccountId; // Fallback to money if no expense acc
-                lines.push({
-                    entry_id: journalEntry.id, account_id: feeAcc,
-                    debit: 0, credit: fees,
-                    description: `Reversal Biaya Admin`
-                });
-            }
-
-            // Reverse COGS (Inventory Back, COGS Credit)
+            lines.push({
+                entry_id: journalEntry.id, account_id: accountPiutang,
+                debit: 0, credit: grossTotal, description: `Reversal Piutang`
+            });
+            // 2. Dr Inventory, Cr HPP
             if (totalHpp > 0) {
                 lines.push({
                     entry_id: journalEntry.id, account_id: accountPersediaan,
-                    debit: totalHpp, credit: 0,
-                    description: `Restock Inventory`
+                    debit: totalHpp, credit: 0, description: `Restok Inventori`
                 });
                 lines.push({
                     entry_id: journalEntry.id, account_id: accountHpp,
-                    debit: 0, credit: totalHpp,
-                    description: `HPP Reversal`
+                    debit: 0, credit: totalHpp, description: `Reversal HPP`
                 });
             }
-
         } else {
-            // === SALES LOGIC ===
-            // Debit Money (Net)
-            if (netReceivable > 0) {
-                lines.push({
-                    entry_id: journalEntry.id, account_id: moneyAccountId,
-                    debit: netReceivable, credit: 0,
-                    description: `Penerimaan Net`
-                });
-            }
-
-            // Debit Fees
-            if (fees > 0) {
-                // If no admin fee account set, we assume it's deducted from revenue or handled elsewhere?
-                // But we throw error if strict. Here we fallback?
-                if (accountBiayaAdmin) {
-                    lines.push({
-                        entry_id: journalEntry.id, account_id: accountBiayaAdmin,
-                        debit: fees, credit: 0,
-                        description: `Biaya Layanan`
-                    });
-                } else {
-                    // If really no account, maybe we just debit Revenue (Net Sales recording)? 
-                    // Or force user to map it. We made it optional in getAccount above.
-                    // Let's fail if fees exist but no account.
-                    throw new Error("Biaya Admin account not set but fees exist.");
-                }
-            }
-
-            // Credit Revenue
+            // SALES LOGIC (GROSS AR METHOD)
+            // ... (rest of sales logic)
+            // --- STEP 1: REVENUE (SPLIT BY PRODUCT TYPE) ---
+            // Debit Piutang (total), Credit Revenue (split by product type)
             lines.push({
-                entry_id: journalEntry.id, account_id: accountPenjualan,
-                debit: 0, credit: grossAmount,
-                description: `Pendapatan Penjualan`
+                entry_id: journalEntry.id, account_id: accountPiutang,
+                debit: grossTotal, credit: 0, description: `Piutang Penjualan (Gross)`
             });
 
-            // COGS
-            if (totalHpp > 0) {
+            // Create separate revenue lines for each product type
+            if (revenueByType.production > 0) {
+                const productionAccount = await getRevenueAccount('production');
                 lines.push({
-                    entry_id: journalEntry.id, account_id: accountHpp,
-                    debit: totalHpp, credit: 0,
-                    description: `Harga Pokok Penjualan`
+                    entry_id: journalEntry.id, account_id: productionAccount,
+                    debit: 0, credit: revenueByType.production,
+                    description: `Penjualan Produk Produksi`
+                });
+            }
+
+            if (revenueByType.purchased > 0) {
+                const purchasedAccount = await getRevenueAccount('purchased');
+                lines.push({
+                    entry_id: journalEntry.id, account_id: purchasedAccount,
+                    debit: 0, credit: revenueByType.purchased,
+                    description: `Penjualan Produk Beli Jadi`
+                });
+            }
+
+            if (revenueByType.service > 0) {
+                const serviceAccount = await getRevenueAccount('service');
+                lines.push({
+                    entry_id: journalEntry.id, account_id: serviceAccount,
+                    debit: 0, credit: revenueByType.service,
+                    description: `Pendapatan Jasa`
+                });
+            }
+
+            // --- STEP 2: DISCOUNT ---
+            if (discountVal > 0) {
+                // Debit Diskon, Credit Piutang
+                lines.push({
+                    entry_id: journalEntry.id, account_id: accountDiskon,
+                    debit: discountVal, credit: 0, description: `Diskon Penjualan`
                 });
                 lines.push({
-                    entry_id: journalEntry.id, account_id: accountPersediaan,
-                    debit: 0, credit: totalHpp,
-                    description: `Persediaan Keluar`
+                    entry_id: journalEntry.id, account_id: accountPiutang,
+                    debit: 0, credit: discountVal, description: `Potongan Piutang (Diskon)`
                 });
+            }
+
+            // --- STEP 3: PAYMENT ---
+            if (paidAmount > 0) {
+                // Determine Money Account
+                let moneyAccountId = paymentAccountId;
+                if (!moneyAccountId) {
+                    moneyAccountId = paymentMethod === 'bank' ? accountBankDefault : accountKasDefault;
+                }
+
+                // Debit Kas/Bank, Credit Piutang
+                lines.push({
+                    entry_id: journalEntry.id, account_id: moneyAccountId,
+                    debit: paidAmount, credit: 0, description: `Penerimaan Pembayaran (${paymentMethod})`
+                });
+                lines.push({
+                    entry_id: journalEntry.id, account_id: accountPiutang,
+                    debit: 0, credit: paidAmount, description: `Pelunasan Piutang`
+                });
+            }
+
+            // --- STEP 4: COGS (Product Type-Based) ---
+            // Group COGS by product type
+            const cogsByType: Record<string, { hpp: number; account: string }> = {};
+
+            for (const item of order.order_items || []) {
+                if (!item.variant_id || !item.hpp || item.hpp === 0) continue;
+
+                // Fetch product type from variant
+                const { data: variant } = await supabase
+                    .from('product_variants')
+                    .select('products(product_type)')
+                    .eq('id', item.variant_id)
+                    .single();
+
+                const productType = variant?.products?.product_type || 'purchased';
+                const itemCogs = item.hpp * item.qty;
+
+                // Skip COGS for service products
+                if (productType === 'service') {
+                    console.log(`Skipping COGS for service product: ${item.product_name}`);
+                    continue;
+                }
+
+                // Get appropriate COGS account
+                let hppAccount;
+                if (productType === 'production') {
+                    hppAccount = getAccount(SETTING_KEYS.ACCOUNT_HPP_PRODUCTION, SETTING_KEYS.ACCOUNT_HPP);
+                } else { // 'purchased'
+                    hppAccount = getAccount(SETTING_KEYS.ACCOUNT_HPP_PURCHASED, SETTING_KEYS.ACCOUNT_HPP);
+                }
+
+                // Aggregate by account
+                if (!cogsByType[hppAccount]) {
+                    cogsByType[hppAccount] = { hpp: 0, account: hppAccount };
+                }
+                cogsByType[hppAccount].hpp += itemCogs;
+            }
+
+            // Create COGS journal lines
+            for (const [accountId, data] of Object.entries(cogsByType)) {
+                if (data.hpp > 0) {
+                    lines.push({
+                        entry_id: journalEntry.id, account_id: accountId,
+                        debit: data.hpp, credit: 0, description: `Harga Pokok Penjualan`
+                    });
+                    lines.push({
+                        entry_id: journalEntry.id, account_id: accountPersediaan,
+                        debit: 0, credit: data.hpp, description: `Pengurangan Persediaan`
+                    });
+                }
             }
         }
 
-        // Insert Lines
+        // 6. Insert Lines
         const { error: linesError } = await supabase
             .from('journal_lines')
             .insert(lines);

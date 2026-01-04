@@ -76,9 +76,13 @@ export function GlobalSearch() {
   ).slice(0, 5);
 
   const filteredInventory = inventory.filter(
-    (i) =>
-      i.sku_variant?.toLowerCase().includes(lowerQuery) ||
-      i.products?.name?.toLowerCase().includes(lowerQuery)
+    (i: any) => {
+      const productName = Array.isArray(i.products) ? i.products[0]?.name : i.products?.name;
+      return (
+        i.sku_variant?.toLowerCase().includes(lowerQuery) ||
+        productName?.toLowerCase().includes(lowerQuery)
+      );
+    }
   ).slice(0, 5);
 
   const hasResults =
@@ -194,7 +198,7 @@ export function GlobalSearch() {
 
           {filteredInventory.length > 0 && (
             <CommandGroup heading="Inventory">
-              {filteredInventory.map((item) => (
+              {filteredInventory.map((item: any) => (
                 <CommandItem
                   key={item.id}
                   value={`inventory-${item.id}`}
@@ -202,7 +206,7 @@ export function GlobalSearch() {
                 >
                   <Archive className="mr-2 h-4 w-4" />
                   <div className="flex flex-col">
-                    <span>{item.products?.name}</span>
+                    <span>{Array.isArray(item.products) ? item.products[0]?.name : item.products?.name}</span>
                     <span className="text-xs text-muted-foreground">
                       {item.sku_variant} • Stok: {item.stock_qty}
                     </span>

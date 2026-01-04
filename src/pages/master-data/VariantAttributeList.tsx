@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -55,7 +56,7 @@ export function VariantAttributeList() {
   const deleteValue = useDeleteAttributeValue();
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  
+
   // Attribute dialog state
   const [attrDialogOpen, setAttrDialogOpen] = useState(false);
   const [editingAttr, setEditingAttr] = useState<VariantAttribute | null>(null);
@@ -215,9 +216,15 @@ export function VariantAttributeList() {
                       ) : (
                         <ChevronRight className="h-4 w-4" />
                       )}
-                      <CardTitle className="text-base font-medium">
-                        {attr.name}
-                      </CardTitle>
+                      <div className="flex items-center gap-3">
+                        <CardTitle className="text-base font-medium">
+                          {attr.name}
+                        </CardTitle>
+                        <span className="text-xs text-muted-foreground">
+                          {/* @ts-ignore */}
+                          {attr.created_at && `Created: ${new Date(attr.created_at).toLocaleDateString("id-ID")}`}
+                        </span>
+                      </div>
                       <Badge variant="secondary" className="ml-2">
                         {attr.attribute_values?.length ?? 0} values
                       </Badge>
@@ -306,6 +313,9 @@ export function VariantAttributeList() {
             <DialogTitle>
               {editingAttr ? "Edit Attribute" : "Add Attribute"}
             </DialogTitle>
+            <DialogDescription>
+              {editingAttr ? "Ubah nama atribut varian (mis: Size, Color)." : "Buat atribut varian baru untuk produk."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -334,6 +344,9 @@ export function VariantAttributeList() {
             <DialogTitle>
               {editingValue ? "Edit Value" : "Add Value"}
             </DialogTitle>
+            <DialogDescription>
+              {editingValue ? "Perbarui nilai pilihan untuk atribut ini." : "Tambahkan pilihan nilai baru (mis: Merah, Biru, atau S, M, L)."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

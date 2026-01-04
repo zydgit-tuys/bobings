@@ -31,11 +31,11 @@ export async function getVirtualStockProducts() {
       virtual_stock,
       sort_order,
       images,
+      product_images(image_url, is_primary, display_order),
       product_variants(
         id,
         product_id,
         sku_variant,
-        virtual_stock_qty,
         size_value_id,
         color_value_id,
         is_active
@@ -47,11 +47,26 @@ export async function getVirtualStockProducts() {
 
   if (error) throw error;
 
-  // Filter active variants
-  return (data || []).map(product => ({
-    ...product,
-    variants: (product.product_variants || []).filter((v: any) => v.is_active)
-  }));
+  // Filter active variants and map images
+  return (data || []).map(product => {
+    // Map product_images to string array, prioritizing is_primary and display_order
+    const pImages = product.product_images || [];
+    const sortedImages = pImages.sort((a: any, b: any) => {
+      if (a.is_primary) return -1;
+      if (b.is_primary) return 1;
+      return (a.display_order || 0) - (b.display_order || 0);
+    });
+    const mappedImages = sortedImages.map((img: any) => img.image_url);
+
+    // Fallback to legacy images column if no product_images found
+    const finalImages = mappedImages.length > 0 ? mappedImages : (product.images || []);
+
+    return {
+      ...product,
+      images: finalImages,
+      variants: (product.product_variants || []).filter((v: any) => v.is_active)
+    };
+  });
 }
 
 export async function updateProductSortOrder(id: string, sort_order: number) {
@@ -69,13 +84,22 @@ export async function updateProductsSortOrder(updates: { id: string; sort_order:
   }
 }
 
-export async function updateVariantVirtualQty(id: string, virtual_stock_qty: number) {
-  const { error } = await supabase
-    .from('product_variants')
-    .update({ virtual_stock_qty, updated_at: new Date().toISOString() })
-    .eq('id', id);
+// Local storage helper
+export function getLocalVirtualStock(): Record<string, number> {
+  try {
+    const data = localStorage.getItem('virtual_stock_qty');
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
 
-  if (error) throw error;
+export async function updateVariantVirtualQty(id: string, qty: number) {
+  // Update local storage
+  const current = getLocalVirtualStock();
+  current[id] = qty;
+  localStorage.setItem('virtual_stock_qty', JSON.stringify(current));
+  return Promise.resolve();
 }
 
 export async function toggleProductVirtualStock(id: string, virtual_stock: boolean) {

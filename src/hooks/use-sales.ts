@@ -18,6 +18,7 @@ export function useSalesOrders(filters?: {
   startDate?: string;
   endDate?: string;
   marketplace?: string;
+  excludeMarketplace?: string;
   status?: string;
 }) {
   return useQuery({

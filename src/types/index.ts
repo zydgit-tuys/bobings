@@ -5,6 +5,9 @@
 // Re-export database types from Supabase
 export type { Tables, TablesInsert, TablesUpdate, Enums } from '@/integrations/supabase/types';
 
+// Product Type Classification
+export type ProductType = 'production' | 'purchased' | 'service';
+
 // Product Types
 export interface Product {
   id: string;
@@ -12,11 +15,17 @@ export interface Product {
   name: string;
   description?: string;
   base_price: number;
+  base_hpp?: number;
+  barcode?: string;
+  unit_id?: string;
   brand_id?: string;
   category_id?: string;
+  product_type: ProductType;
   is_active: boolean;
   images?: string[];
   virtual_stock: boolean;
+  weight?: number;
+  dimensions?: string;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -26,16 +35,22 @@ export interface ProductVariant {
   id: string;
   product_id: string;
   sku_variant: string;
-  price: number;
   hpp: number;
+  price: number;
+  harga_jual_umum?: number;
+  harga_khusus?: number;
+  barcode?: string;
   stock_qty: number;
+  initial_stock: number;
+  reserved_qty?: number;
   min_stock_alert: number;
   color_value_id?: string;
   size_value_id?: string;
   is_active: boolean;
-  virtual_stock_qty: number;
   created_at: string;
   updated_at: string;
+  // Join fields
+  products?: Product;
 }
 
 export interface ProductWithVariants extends Product {
@@ -64,19 +79,33 @@ export interface Supplier {
   id: string;
   code: string;
   name: string;
-  contact_person?: string;
-  phone?: string;
-  email?: string;
   address?: string;
   city?: string;
+  phone?: string;
+  email?: string;
+  contact_person?: string;
   notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
+export interface ProductSupplier {
+  id: string;
+  product_id: string;
+  supplier_id: string;
+  variant_id?: string; // Added to support per-variant pricing
+  purchase_price: number;
+  currency: string;
+  is_preferred: boolean;
+  created_at: string;
+  updated_at: string;
+  suppliers?: Supplier;
+  product_variants?: { sku_variant: string }; // For UI display
+}
+
 // Purchase Types
-export type PurchaseStatus = 'draft' | 'ordered' | 'partial' | 'received' | 'cancelled';
+export type PurchaseStatus = 'draft' | 'ordered' | 'partial' | 'received' | 'completed' | 'cancelled';
 
 export interface Purchase {
   id: string;
@@ -107,7 +136,36 @@ export interface PurchaseOrderLine {
 
 export interface PurchaseWithDetails extends Purchase {
   supplier?: Supplier;
-  lines: PurchaseOrderLine[];
+  purchase_order_lines: PurchaseOrderLine[];
+}
+
+export type PurchaseReturnStatus = 'draft' | 'completed';
+
+export interface PurchaseReturn {
+  id: string;
+  purchase_id: string;
+  return_no: string;
+  return_date: string;
+  status: PurchaseReturnStatus;
+  reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseReturnLine {
+  id: string;
+  return_id: string;
+  purchase_line_id: string;
+  qty: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  // Join fields
+  purchase_order_line?: PurchaseOrderLine;
+}
+
+export interface PurchaseReturnWithDetails extends PurchaseReturn {
+  return_lines: PurchaseReturnLine[];
 }
 
 // Sales Types

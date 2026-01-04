@@ -3,11 +3,12 @@ import {
   getStockMovements, createStockMovement, adjustStock,
   getInventoryAlerts, getInventoryValuation,
   calculateOptimalStock, applyOptimalStock,
-  triggerAutoJournalStock, // Imported
+  triggerAutoJournalStock,
   type OptimalStockParams, type ApplyStockParams
 } from '@/lib/api/inventory';
 import type { MovementType } from '@/types';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 export function useStockMovements(variantId?: string, limit = 100) {
   return useQuery({
@@ -44,10 +45,28 @@ export function useAdjustStock() {
       queryClient.invalidateQueries({ queryKey: ['inventory-alerts'] });
 
       try {
+        // Fetch variant to get HPP for journaling
+        const { data: variant, error: variantError } = await supabase
+          .from('product_variants')
+          .select('products(base_hpp)')
+          .eq('id', variables.variantId)
+          .single();
+
+        if (variantError || !variant) {
+          throw new Error('Failed to fetch variant HPP');
+        }
+
+        const product = Array.isArray(variant.products) ? variant.products[0] : variant.products;
+        const hpp = product?.base_hpp || 0;
+
+        if (hpp === 0) {
+          throw new Error('HPP is 0, cannot create journal entry');
+        }
+
         await triggerAutoJournalStock(
           variables.variantId,
           variables.qty,
-          data.hpp,
+          hpp,
           variables.notes || 'Stock adjustment'
         );
         toast.success('Stock updated & Journal entry created');

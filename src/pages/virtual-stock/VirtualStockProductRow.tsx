@@ -68,11 +68,11 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand, is
         </button>
 
         {/* Image thumbnail */}
-        <div className="w-10 h-10 rounded overflow-hidden bg-muted flex items-center justify-center shrink-0">
+        <div className="w-16 h-16 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0 border">
           {firstImage ? (
             <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
           ) : (
-            <Image className="h-4 w-4 text-muted-foreground" />
+            <Image className="h-6 w-6 text-muted-foreground" />
           )}
         </div>
 
@@ -106,11 +106,11 @@ export function VirtualStockProductRow({ product, isExpanded, onToggleExpand, is
         </div>
 
         {/* Image thumbnail */}
-        <div className="w-8 h-8 rounded overflow-hidden bg-muted flex items-center justify-center shrink-0">
+        <div className="w-16 h-16 rounded-md overflow-hidden bg-muted flex items-center justify-center shrink-0 border">
           {firstImage ? (
             <img src={firstImage} alt={product.name} className="w-full h-full object-cover" />
           ) : (
-            <Image className="h-3 w-3 text-muted-foreground" />
+            <Image className="h-6 w-6 text-muted-foreground" />
           )}
         </div>
 

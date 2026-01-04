@@ -5,14 +5,17 @@ import { Input } from "@/components/ui/input";
 import { DataTable } from "@/components/shared/DataTable";
 import { MobileCardList } from "@/components/shared/MobileCardList";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useCategories, useCreateCategory } from "@/hooks/use-products";
+import { Switch } from "@/components/ui/switch";
+import { useCategories, useCreateCategory, useUpdateCategory } from "@/hooks/use-products";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -31,11 +34,13 @@ export function CategoryList() {
   const queryClient = useQueryClient();
   const { data: categories, isLoading } = useCategories();
   const createCategory = useCreateCategory();
-  
+  const updateCategory = useUpdateCategory();
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
   const [categoryName, setCategoryName] = useState("");
   const [parentId, setParentId] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const getParentName = (parentId: string | null) => {
@@ -53,9 +58,23 @@ export function CategoryList() {
     },
     { key: "level", header: "Level" },
     {
+      key: "is_active",
+      header: "Status",
+      render: (item: any) => (
+        <Badge variant={item.is_active ? "default" : "secondary"}>
+          {item.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    {
       key: "created_at",
       header: "Created",
       render: (item: any) => new Date(item.created_at).toLocaleDateString("id-ID"),
+    },
+    {
+      key: "updated_at",
+      header: "Last Updated",
+      render: (item: any) => new Date(item.updated_at).toLocaleDateString("id-ID"),
     },
     {
       key: "actions",
@@ -91,6 +110,7 @@ export function CategoryList() {
     setEditingCategory(category);
     setCategoryName(category.name);
     setParentId(category.parent_id);
+    setIsActive(category.is_active);
     setDialogOpen(true);
   };
 
@@ -98,6 +118,7 @@ export function CategoryList() {
     setEditingCategory(null);
     setCategoryName("");
     setParentId(null);
+    setIsActive(true);
     setDialogOpen(true);
   };
 
@@ -112,21 +133,21 @@ export function CategoryList() {
 
     try {
       if (editingCategory) {
-        const { error } = await supabase
-          .from("categories")
-          .update({ 
+        await updateCategory.mutateAsync({
+          id: editingCategory.id,
+          data: {
             name: categoryName.trim(),
             parent_id: parentId,
             level,
-          })
-          .eq("id", editingCategory.id);
-        if (error) throw error;
-        toast.success("Category updated");
+            is_active: isActive
+          }
+        });
       } else {
-        await createCategory.mutateAsync({ 
+        await createCategory.mutateAsync({
           name: categoryName.trim(),
           parent_id: parentId ?? undefined,
           level,
+          is_active: isActive
         });
       }
       setDialogOpen(false);
@@ -139,26 +160,31 @@ export function CategoryList() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      const { error } = await supabase
-        .from("categories")
-        .update({ is_active: false })
-        .eq("id", deleteId);
-      if (error) throw error;
-      toast.success("Category deleted");
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
+      await updateCategory.mutateAsync({
+        id: deleteId,
+        data: { is_active: false }
+      });
       setDeleteId(null);
+    } catch (error: any) {
+      // Error handled by hook
+    } finally {
+      // no-op
     }
   };
 
   const renderCategoryCard = (category: any) => (
     <div className="p-4">
-      <p className="font-medium text-foreground">{category.name}</p>
-      <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-        <span>Parent: {getParentName(category.parent_id)}</span>
-        <span>Level: {category.level}</span>
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-medium text-foreground">{category.name}</p>
+          <div className="flex gap-4 text-sm text-muted-foreground mt-1">
+            <span>Parent: {getParentName(category.parent_id)}</span>
+            <span>Level: {category.level}</span>
+          </div>
+        </div>
+        <Badge variant={category.is_active ? "default" : "secondary"}>
+          {category.is_active ? "Active" : "Inactive"}
+        </Badge>
       </div>
     </div>
   );
@@ -207,6 +233,9 @@ export function CategoryList() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingCategory ? "Edit Category" : "Add Category"}</DialogTitle>
+            <DialogDescription>
+              {editingCategory ? "Ubah kategori untuk mengelompokkan produk Anda." : "Buat kategori baru untuk manajemen produk."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -238,6 +267,14 @@ export function CategoryList() {
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="isActive"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+              />
+              <Label htmlFor="isActive">Active Status</Label>
             </div>
           </div>
           <DialogFooter>

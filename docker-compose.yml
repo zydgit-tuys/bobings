@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: .
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules # Mencegah node_modules lokal menimpa container
+    env_file:
+      - .env
+    # Opsional: Jika kamu ingin container ini bisa bicara dengan Supabase
+    # menggunakan "localhost" di server-side rendering (seperti Next.js),
+    # tambahkan: network_mode: "host" (hanya linux) atau gunakan host.docker.internal

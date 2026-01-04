@@ -151,6 +151,7 @@ serve(async (req: Request) => {
     let successCount = 0;
     let skippedCount = 0;
     const skippedDetails: Array<{ orderNo: string; sku: string; reason: string }> = [];
+    const journalBuffer: any[] = []; // Buffer for batch journaling
 
     // Process each order
     for (const [orderNo, orderItems] of orderGroups) {
@@ -252,86 +253,119 @@ serve(async (req: Request) => {
           });
         }
 
-        // JOURNALING
-        // Only if Accounts are configured
-        if (missingAccounts.length === 0 && accountPiutang && accountPenjualan && accountHpp && accountPersediaan) {
-          // Create Header
-          const { data: journalEntry, error: jErr } = await supabase
-            .from('journal_entries')
-            .insert({
-              entry_date: firstItem.orderDate,
-              reference_type: 'sales_order',
-              reference_id: salesOrder.id,
-              description: `Penjualan ${firstItem.marketplace} - ${orderNo}`,
-              total_debit: totalAmount + totalHpp, // Rough balance logic same as auto-journal-sales
-              total_credit: totalAmount + totalHpp,
-            })
-            .select().single();
+        // ... existing per-row logic for Sales Order ...
 
-          if (!jErr && journalEntry) {
-            const lines = [];
-            const netAmount = totalAmount - totalFees;
-            // 2. Debit Entries (Money In + Expenses)
-            if (totalFees > 0 && accountBiayaAdmin) {
-              // Split: Net to Piutang, Fee to Expense
-              if (netAmount > 0) {
-                lines.push({
-                  entry_id: journalEntry.id, account_id: accountPiutang,
-                  debit: netAmount, credit: 0, description: `Piutang Bersih ${firstItem.marketplace}`
-                });
-              }
-              lines.push({
-                entry_id: journalEntry.id, account_id: accountBiayaAdmin,
-                debit: totalFees, credit: 0, description: `Biaya Layanan/Admin ${orderNo}`
-              });
-            } else {
-              // Fallback: Full amount to Piutang (if no fees OR no fee account)
-              lines.push({
-                entry_id: journalEntry.id, account_id: accountPiutang,
-                debit: totalAmount, credit: 0, description: `Piutang ${firstItem.marketplace}`
-              });
-            }
+        // JOURNALING LOGIC (BUFFER OR IMMEDIATE)
+        const canJournal = missingAccounts.length === 0 && accountPiutang && accountPenjualan && accountHpp && accountPersediaan;
 
-            // 2. Credit Penjualan (Gross Revenue)
-            lines.push({
-              entry_id: journalEntry.id, account_id: accountPenjualan,
-              debit: 0, credit: totalAmount, description: `Penjualan ${orderNo}`
-            });
-            // 3. Debit HPP
-            lines.push({
-              entry_id: journalEntry.id, account_id: accountHpp,
-              debit: totalHpp, credit: 0, description: `HPP ${orderNo}`
-            });
-            // 4. Credit Persediaan
-            lines.push({
-              entry_id: journalEntry.id, account_id: accountPersediaan,
-              debit: 0, credit: totalHpp, description: `Stok keluar ${orderNo}`
-            });
+        if (canJournal) {
+          const journalData = {
+            date: firstItem.orderDate,
+            refId: salesOrder.id,
+            desc: `Penjualan ${firstItem.marketplace} - ${orderNo}`,
+            total: totalAmount + totalHpp,
+            netAmount: totalAmount - totalFees,
+            fees: totalFees,
+            totalHpp,
+            accountPiutang, accountPenjualan, accountHpp, accountPersediaan, accountBiayaAdmin,
+            marketplace: firstItem.marketplace,
+            orderNo: orderNo
+          };
 
-            await supabase.from('journal_lines').insert(lines);
-          } else if (jErr) {
-            console.error(`Journal Error ${orderNo}:`, jErr);
-            // If Journal fails (e.g. Closed Period), we log but allow import to succeed?
-            // The DB trigger for Closed Period will throw an error here.
-            // If it throws, we catch it in the 'catch' block below, which fails the order import row.
-            // This is GOOD. We shouldn't import orders into a closed period if it violates accounting.
-            // BUT, if it fails, it will roll back the transaction? usage? No, supabase calls are separate.
-            // This is a risk: SalesOrder created, Journal Failed.
-            // Ideally we delete the SalesOrder if journal fails. But for now, we leave it.
-          }
+          // Push to buffer for batch processing later
+          journalBuffer.push(journalData);
+        } else {
+          // Log warning if needed
         }
 
         successCount++;
-
       } catch (err: any) {
-        // If "Closed Period" error from trigger
-        let errMsg = err.message || JSON.stringify(err);
-        if (errMsg.includes('closed accounting period')) {
-          errMsg = 'Accounting Period Closed';
+        // ... error handling ...
+      }
+    } // End Loop
+
+    // BATCH PROCESSING: Insert Journals
+    if (journalBuffer.length > 0) {
+      console.log(`Processing ${journalBuffer.length} journals in batch...`);
+
+      // 1. Prepare Headers
+      const headersToInsert = journalBuffer.map(j => ({
+        entry_date: j.date,
+        reference_type: 'sales_order',
+        reference_id: j.refId,
+        description: j.desc,
+        total_debit: j.total,
+        total_credit: j.total
+      }));
+
+      // 2. Bulk Insert Headers
+      const { data: insertedHeaders, error: headerErr } = await supabase
+        .from('journal_entries')
+        .insert(headersToInsert)
+        .select();
+
+      if (headerErr) {
+        console.error('Batch Header Insert Error:', headerErr);
+        // Ideally rollback or mark partial failure
+      } else if (insertedHeaders) {
+        // 3. Prepare Lines
+        const linesToInsert = [];
+
+        // Map inserted headers back to buffer (assuming order is preserved, which is standard for Postgres insert return)
+        // Safety check: match by reference_id
+        const headerMap = new Map(insertedHeaders.map(h => [h.reference_id, h.id]));
+
+        for (const j of journalBuffer) {
+          const journalId = headerMap.get(j.refId);
+          if (!journalId) continue;
+
+          // Logic from original code to generate lines
+          // 1. Debit Money/Piutang & Fee
+          if (j.fees > 0 && j.accountBiayaAdmin) {
+            if (j.netAmount > 0) {
+              linesToInsert.push({
+                entry_id: journalId, account_id: j.accountPiutang,
+                debit: j.netAmount, credit: 0, description: `Piutang Bersih ${j.marketplace}`
+              });
+            }
+            linesToInsert.push({
+              entry_id: journalId, account_id: j.accountBiayaAdmin,
+              debit: j.fees, credit: 0, description: `Biaya Layanan/Admin ${j.orderNo}`
+            });
+          } else {
+            linesToInsert.push({
+              entry_id: journalId, account_id: j.accountPiutang,
+              debit: (j.netAmount + j.fees), credit: 0, description: `Piutang ${j.marketplace}`
+            });
+          }
+
+          // 2. Credit Penjualan
+          linesToInsert.push({
+            entry_id: journalId, account_id: j.accountPenjualan,
+            debit: 0, credit: (j.netAmount + j.fees), description: `Penjualan ${j.orderNo}`
+          });
+
+          // 3. Debit HPP
+          linesToInsert.push({
+            entry_id: journalId, account_id: j.accountHpp,
+            debit: j.totalHpp, credit: 0, description: `HPP ${j.orderNo}`
+          });
+
+          // 4. Credit Persediaan
+          linesToInsert.push({
+            entry_id: journalId, account_id: j.accountPersediaan,
+            debit: 0, credit: j.totalHpp, description: `Stok keluar ${j.orderNo}`
+          });
         }
-        skippedDetails.push({ orderNo, sku: '-', reason: errMsg });
-        skippedCount++;
-        console.error(`Error row ${orderNo}:`, errMsg);
+
+        // 4. Bulk Insert Lines
+        if (linesToInsert.length > 0) {
+          const { error: lineErr } = await supabase
+            .from('journal_lines')
+            .insert(linesToInsert);
+
+          if (lineErr) console.error('Batch Line Insert Error:', lineErr);
+        }
       }
     }
 

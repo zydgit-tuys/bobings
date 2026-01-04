@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { AccountMappingSettings } from "./AccountMappingSettings";
 import { GeneralSettings } from "./GeneralSettings";
 import { BankAccountSettings } from "./BankAccountSettings";
+import { WarehouseSettings } from "./WarehouseSettings";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("account-mapping");
@@ -23,6 +24,9 @@ export default function SettingsPage() {
           <TabsTrigger value="bank-accounts" className="text-xs md:text-sm">
             Akun Bank
           </TabsTrigger>
+          <TabsTrigger value="warehouses" className="text-xs md:text-sm">
+            Gudang
+          </TabsTrigger>
           <TabsTrigger value="general" className="text-xs md:text-sm">
             Pengaturan Umum
           </TabsTrigger>
@@ -34,6 +38,10 @@ export default function SettingsPage() {
 
         <TabsContent value="bank-accounts" className="space-y-4">
           <BankAccountSettings />
+        </TabsContent>
+
+        <TabsContent value="warehouses" className="space-y-4">
+          <WarehouseSettings />
         </TabsContent>
 
         <TabsContent value="general" className="space-y-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -19,9 +20,15 @@ import {
 } from "@/components/ui/select";
 import { triggerAutoJournalPurchase } from "@/lib/api/purchases";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useBankAccounts } from "@/hooks/use-bank-accounts";
-import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, AlertCircle, CheckCircle2, Info, ArrowLeft, Building2, Wallet, Check } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { JournalEntryDetailView } from "@/pages/accounting/JournalEntryDetailView";
+import { cn } from "@/lib/utils"; // Assuming cn utility is available
 
 interface PaymentDialogProps {
   open: boolean;
@@ -30,14 +37,67 @@ interface PaymentDialogProps {
 }
 
 export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogProps) {
-  const [paymentType, setPaymentType] = useState<"cash" | "bank" | "hutang">("bank");
+  const [paymentType, setPaymentType] = useState<"cash" | "bank">("bank");
   const [amount, setAmount] = useState<number>(0);
   const [selectedBankId, setSelectedBankId] = useState<string>("");
+  const [showSuccess, setShowSuccess] = useState(false);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const isCompleted = purchase?.status === 'completed';
+  const showHistory = showSuccess || isCompleted;
 
   const { data: bankAccounts, isLoading: bankAccountsLoading } = useBankAccounts();
 
-  // Set default bank when bank accounts load
+  // Fetch all journal entries for this purchase
+  const { data: purchaseJournals } = useQuery({
+    queryKey: ['journal-entries', 'purchase', purchase?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select(`
+          *,
+          journal_lines (
+            *,
+            chart_of_accounts (code, name)
+          )
+        `)
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', purchase.id)
+        .order('entry_date', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!purchase?.id, // Fetch immediately to calculate remaining amount
+  });
+
+  // Calculate remaining amount based on Liability Account (2xxx) balance
+  const remainingAmount = useMemo(() => {
+    if (!purchaseJournals || purchaseJournals.length === 0) return purchase?.total_amount || 0;
+
+    let liabilityBalance = 0;
+    let hasLiabilityActivity = false;
+
+    purchaseJournals.forEach((journal: any) => {
+      journal.journal_lines?.forEach((line: any) => {
+        // Check if account is Liability (starts with "2")
+        // This tracks Hutang Supplier balance
+        if (line.chart_of_accounts?.code?.startsWith('2')) {
+          if (line.credit > 0) hasLiabilityActivity = true;
+          liabilityBalance += (line.credit - line.debit);
+        }
+      });
+    });
+
+    // If we have recorded liability (received goods), use the balance
+    // Otherwise (e.g. DP before receive), default to total amount
+    return hasLiabilityActivity ? Math.max(0, liabilityBalance) : (purchase?.total_amount || 0);
+  }, [purchaseJournals, purchase?.total_amount]);
+
+  const diff = amount - (purchase?.total_amount || 0);
+  const paymentStatus = amount === 0 ? 'none' : amount === purchase?.total_amount ? 'full' : amount < purchase?.total_amount ? 'partial' : 'over';
   useEffect(() => {
     if (bankAccounts && bankAccounts.length > 0) {
       const defaultBank = bankAccounts.find((b) => b.is_default);
@@ -52,14 +112,18 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
   const paymentMutation = useMutation({
     mutationFn: async () => {
       const bankId = paymentType === "bank" ? selectedBankId : undefined;
-      return triggerAutoJournalPurchase(purchase.id, paymentType, amount, bankId);
+      return triggerAutoJournalPurchase(purchase.id, 'payment', paymentType, amount, bankId);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       const typeLabel = paymentType === "cash" ? "Tunai" : paymentType === "bank" ? "Transfer Bank" : "Hutang";
+
       toast.success(`Jurnal ${typeLabel} berhasil dibuat - ${purchase.purchase_no}`);
+
       queryClient.invalidateQueries({ queryKey: ["purchases"] });
       queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
-      onOpenChange(false);
+
+      // Show success view with all PO journals
+      setShowSuccess(true);
     },
     onError: (error: Error) => {
       if (error.message.includes("closed accounting period")) {
@@ -82,10 +146,20 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
     paymentMutation.mutate();
   };
 
-  // Reset amount when dialog opens
+  // Sync amount with total PO when dialog opens or purchase updates
+  // Sync amount with calculated remaining amount when dialog opens
+  useEffect(() => {
+    if (open) {
+      // If purchaseJournals is loaded, use calculated remaining
+      // Otherwise default to total (it will update when query finishes)
+      setAmount(remainingAmount);
+    }
+  }, [open, remainingAmount]);
+
   const handleOpenChange = (open: boolean) => {
-    if (open && purchase) {
-      setAmount(purchase.total_amount);
+    if (!open) {
+      setShowSuccess(false);
+      setAmount(0);
     }
     onOpenChange(open);
   };
@@ -95,63 +169,158 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
   const selectedBank = bankAccounts?.find((b) => b.id === selectedBankId);
 
   const getPaymentDescription = () => {
-    switch (paymentType) {
-      case "cash":
-        return "Debit: Persediaan → Credit: Kas";
-      case "bank":
-        const bankName = selectedBank?.bank_name || "Bank";
-        return `Debit: Persediaan → Credit: ${bankName}`;
-      case "hutang":
-        return "Debit: Persediaan → Credit: Hutang Supplier";
+    let source = paymentType === "cash" ? "Kas" : (selectedBank?.bank_name || "Bank");
+
+    if (paymentStatus === 'full') {
+      return `Pembayaran Lunas: Debit Hutang Supplier → Credit ${source}`;
+    } else if (paymentStatus === 'partial') {
+      return `Pembayaran Parsial: Sebagian hutang dibayar dari ${source}`;
+    } else if (paymentStatus === 'over') {
+      return `Kelebihan Bayar: Hutang lunas + deposit dari ${source}`;
     }
+    return `Mencatat pembayaran dari ${source}`;
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Pembayaran & Jurnal</DialogTitle>
+          <DialogTitle>
+            {showHistory ? `Riwayat Pembayaran - ${purchase?.purchase_no}` : "Input Pembayaran"}
+          </DialogTitle>
           <DialogDescription>
-            Catat pembayaran untuk {purchase.purchase_no}
+            {showHistory ? "Riwayat jurnal dan pembayaran untuk PO ini." : "Catat pembayaran untuk Purchase Order ini. Jurnal akan dibuat otomatis."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="p-4 bg-muted rounded-lg space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Supplier:</span>
-              <span className="font-medium">{purchase.suppliers?.name}</span>
+        {!showHistory ? (
+          <>
+            {/* Purchase info */}
+            <div className="p-4 bg-muted rounded-lg space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Supplier:</span>
+                <span className="font-medium">{purchase.suppliers?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total PO:</span>
+                <span className="font-medium">Rp {purchase.total_amount?.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Status Bayar:</span>
+                <div className="flex gap-2">
+                  {paymentStatus === 'full' && <Badge className="bg-green-500 hover:bg-green-600">Lunas</Badge>}
+                  {paymentStatus === 'partial' && <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-200">Cicil / Parsial</Badge>}
+                  {paymentStatus === 'over' && <Badge variant="destructive">Kelebihan Bayar</Badge>}
+                  {paymentStatus === 'none' && <Badge variant="outline">Belum Isi</Badge>}
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total PO:</span>
-              <span className="font-medium">Rp {purchase.total_amount?.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
-              <span className="font-medium capitalize">{purchase.status}</span>
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label>Tipe Pembayaran</Label>
-            <Select
-              value={paymentType}
-              onValueChange={(value: "cash" | "bank" | "hutang") => setPaymentType(value)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="bank">Transfer Bank</SelectItem>
-                <SelectItem value="cash">Kas / Tunai</SelectItem>
-                <SelectItem value="hutang">Hutang (Bayar Nanti)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {paymentType === "bank" && (
+            {/* STEP 1: Amount Input - First! */}
             <div className="space-y-2">
-              <Label>Pilih Akun Bank</Label>
+              <Label>Jumlah Pembayaran</Label>
+              <Input
+                type="number"
+                placeholder="Masukkan jumlah bayar..."
+                value={amount || ""}
+                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                min={0}
+              />
+              <p className="text-xs text-muted-foreground">
+                Total PO: Rp {purchase?.total_amount?.toLocaleString() || 0}
+              </p>
+            </div>
+
+            {/* STEP 2: Payment Status Alert */}
+            {paymentStatus === 'partial' && (
+              <Alert className="bg-amber-50 border-amber-200 text-amber-900">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Pembayaran Parsial</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Rp {amount.toLocaleString()} dari Rp {purchase?.total_amount?.toLocaleString()}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {paymentStatus === 'over' && (
+              <Alert className="bg-blue-50 border-blue-200 text-blue-900">
+                <Info className="h-4 w-4" />
+                <AlertTitle>Kelebihan Bayar</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Kelebihan Rp {(amount - (purchase?.total_amount || 0)).toLocaleString()} akan dicatat sebagai deposit/uang muka.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {paymentStatus === 'full' && (
+              <Alert className="bg-green-50 border-green-200 text-green-900">
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertTitle>Pembayaran Lunas</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Transaksi akan dicatat lunas dan stok akan langsung siap digunakan.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* STEP 3: Description */}
+            <p className="text-xs text-muted-foreground italic">
+              {getPaymentDescription()}
+            </p>
+
+            {/* STEP 4: Payment Type - Visual Tabs */}
+            <div className="space-y-2">
+              <Label>Tipe Pembayaran</Label>
+              <RadioGroup
+                value={paymentType}
+                onValueChange={(value: "cash" | "bank") => setPaymentType(value)}
+                className="grid grid-cols-2 gap-3"
+              >
+                <Label
+                  htmlFor="bank"
+                  className={cn(
+                    "flex flex-col items-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all hover:bg-accent",
+                    paymentType === "bank"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted"
+                  )}
+                >
+                  <RadioGroupItem value="bank" id="bank" className="sr-only" />
+                  <Building2 className="h-6 w-6" />
+                  <span className="text-sm font-medium">Transfer Bank</span>
+                  {paymentType === "bank" && <Check className="h-4 w-4 text-primary" />}
+                </Label>
+
+                <Label
+                  htmlFor="cash"
+                  className={cn(
+                    "flex flex-col items-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all hover:bg-accent",
+                    paymentType === "cash"
+                      ? "border-primary bg-primary/5"
+                      : "border-muted"
+                  )}
+                >
+                  <RadioGroupItem value="cash" id="cash" className="sr-only" />
+                  <Wallet className="h-6 w-6" />
+                  <span className="text-sm font-medium">Tunai / Kas</span>
+                  {paymentType === "cash" && <Check className="h-4 w-4 text-primary" />}
+                </Label>
+              </RadioGroup>
+
+              {paymentStatus === 'partial' && (
+                <p className="text-xs text-muted-foreground italic">
+                  💡 Tip: Transfer Bank memudahkan tracking pembayaran parsial
+                </p>
+              )}
+            </div>
+
+            {/* STEP 5: Bank Selector - Always visible */}
+            <div className="space-y-2">
+              <Label className={paymentType === 'cash' ? 'text-muted-foreground' : ''}>
+                Pilih Akun Bank
+                {paymentType === 'cash' && (
+                  <span className="text-xs ml-1">(Tidak diperlukan untuk Tunai)</span>
+                )}
+              </Label>
               {bankAccountsLoading ? (
                 <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -161,8 +330,9 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
                 <Select
                   value={selectedBankId}
                   onValueChange={setSelectedBankId}
+                  disabled={paymentType === 'cash'}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={paymentType === 'cash' ? 'opacity-50' : ''}>
                     <SelectValue placeholder="Pilih bank..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -176,45 +346,105 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="text-sm text-destructive">
+                <p className="text-sm text-muted-foreground">
                   Belum ada akun bank. Silakan tambahkan di Settings → Akun Bank.
                 </p>
               )}
             </div>
-          )}
 
-          <p className="text-xs text-muted-foreground">
-            {getPaymentDescription()}
-          </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Batal
+              </Button>
+              <Button
+                onClick={handlePayment}
+                disabled={
+                  paymentMutation.isPending ||
+                  amount <= 0 ||
+                  (paymentType === "bank" && !selectedBankId && bankAccounts && bankAccounts.length > 0)
+                }
+              >
+                {paymentMutation.isPending ? "Memproses..." : "Buat Jurnal"}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <div className="space-y-4">
+            {!isCompleted && (
+              <div className="flex items-center gap-2 text-green-600 mb-2">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-semibold">Pembayaran Berhasil Dicatat</span>
+              </div>
+            )}
 
-          <div className="space-y-2">
-            <Label>Jumlah</Label>
-            <Input
-              type="number"
-              min={0}
-              value={amount}
-              onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-              placeholder="0"
-            />
+            {/* Show all journals for this PO */}
+            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 mt-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-muted-foreground">Riwayat Jurnal</h4>
+                <Badge variant="outline">{purchase.purchase_no}</Badge>
+              </div>
+
+              {purchaseJournals && purchaseJournals.length > 0 ? (
+                <div className="space-y-0">
+                  {purchaseJournals.map((journal: any, index: number) => (
+                    <div key={journal.id} className="relative pl-6 pb-8 border-l-2 border-muted last:border-l-0 last:pb-0">
+                      {/* Timeline Dot */}
+                      <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-primary shadow-[0_0_0_4px_white]" />
+
+                      <div className="flex flex-col gap-1 mb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {new Date(journal.entry_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </span>
+                        <span className="text-sm font-medium leading-none">{journal.description}</span>
+                      </div>
+
+                      <div className="rounded-md border bg-card text-xs overflow-hidden shadow-sm">
+                        {/* Header */}
+                        <div className="grid grid-cols-[1fr_90px_90px] gap-2 p-2 bg-muted/50 border-b font-medium text-muted-foreground">
+                          <div>Akun</div>
+                          <div className="text-right">Debit</div>
+                          <div className="text-right">Credit</div>
+                        </div>
+
+                        {/* Rows */}
+                        {journal.journal_lines?.map((line: any) => (
+                          <div key={line.id} className="grid grid-cols-[1fr_90px_90px] gap-2 p-2 border-b last:border-0 items-center">
+                            <div className="flex flex-col truncate">
+                              <span className="font-semibold text-foreground">{line.chart_of_accounts?.name}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono">{line.chart_of_accounts?.code}</span>
+                            </div>
+                            <div className="text-right font-mono text-emerald-600">
+                              {line.debit > 0 && `Rp ${line.debit.toLocaleString()}`}
+                            </div>
+                            <div className="text-right font-mono text-crimson-600">
+                              {line.credit > 0 && `Rp ${line.credit.toLocaleString()}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                  <p className="text-sm">Memuat riwayat jurnal...</p>
+                </div>
+              )}
+            </div>
+
+            <Button
+              className="w-full"
+              onClick={() => {
+                onOpenChange(false);
+                navigate("/purchases");
+              }}
+            >
+              Selesai & Kembali ke Daftar PO
+            </Button>
           </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Batal
-          </Button>
-          <Button
-            onClick={handlePayment}
-            disabled={
-              paymentMutation.isPending ||
-              amount <= 0 ||
-              (paymentType === "bank" && !selectedBankId && bankAccounts && bankAccounts.length > 0)
-            }
-          >
-            {paymentMutation.isPending ? "Memproses..." : "Buat Jurnal"}
-          </Button>
-        </DialogFooter>
+        )}
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }

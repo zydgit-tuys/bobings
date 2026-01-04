@@ -27,10 +27,13 @@ const DEFAULT_OPTIONS: ImageUploadOptions = {
 /**
  * Convert image to WebP and compress
  */
+/**
+ * Convert image to WebP and compress
+ */
 async function convertToWebP(
     file: File,
     options: ImageUploadOptions = {}
-): Promise<Blob> {
+): Promise<{ blob: Blob; width: number; height: number }> {
     const { maxWidth, maxHeight, quality } = { ...DEFAULT_OPTIONS, ...options };
 
     return new Promise((resolve, reject) => {
@@ -69,7 +72,7 @@ async function convertToWebP(
             canvas.toBlob(
                 (blob) => {
                     if (blob) {
-                        resolve(blob);
+                        resolve({ blob, width, height });
                     } else {
                         reject(new Error('Failed to convert image'));
                     }
@@ -101,17 +104,26 @@ function generateFilename(originalName: string): string {
     return `${sanitized}-${timestamp}-${random}.webp`;
 }
 
+export interface UploadedImageResult {
+    publicUrl: string;
+    storagePath: string;
+    width: number;
+    height: number;
+    fileSize: number;
+    filename: string;
+}
+
 /**
  * Upload image to Supabase Storage with auto WebP conversion
  * 
  * @param file - Image file to upload
  * @param options - Upload options
- * @returns Public URL of uploaded image
+ * @returns Uploaded image metadata
  */
 export async function uploadImage(
     file: File,
     options: ImageUploadOptions = {}
-): Promise<string> {
+): Promise<UploadedImageResult> {
     const { bucket, folder } = { ...DEFAULT_OPTIONS, ...options };
 
     // Validate file type
@@ -120,7 +132,7 @@ export async function uploadImage(
     }
 
     // Convert to WebP
-    const webpBlob = await convertToWebP(file, options);
+    const { blob: webpBlob, width, height } = await convertToWebP(file, options);
 
     // Generate filename
     const filename = generateFilename(file.name);
@@ -146,7 +158,14 @@ export async function uploadImage(
         .from(bucket!)
         .getPublicUrl(filepath);
 
-    return publicUrl;
+    return {
+        publicUrl,
+        storagePath: filepath,
+        width,
+        height,
+        fileSize: webpBlob.size,
+        filename
+    };
 }
 
 /**
@@ -155,7 +174,7 @@ export async function uploadImage(
 export async function uploadImages(
     files: File[],
     options: ImageUploadOptions = {}
-): Promise<string[]> {
+): Promise<UploadedImageResult[]> {
     const uploadPromises = files.map((file) => uploadImage(file, options));
     return Promise.all(uploadPromises);
 }

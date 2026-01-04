@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useProducts } from "@/hooks/use-products";
 import { useSuppliers } from "@/hooks/use-suppliers";
@@ -28,6 +30,7 @@ import { ActionCenter } from "@/components/dashboard/ActionCenter";
 type Period = 'today' | 'week' | 'month' | 'year';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('month');
 
   const { data: products, isLoading: loadingProducts } = useProducts();
@@ -59,6 +62,57 @@ export default function Dashboard() {
         title="Dashboard"
         description="Analytics dan overview bisnis"
       />
+
+      {/* Quick Actions Command Center */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+        <Button
+          size="lg"
+          className="h-24 flex flex-col items-center justify-center gap-2 shadow-sm border bg-card hover:bg-accent/50 transition-all hover:-translate-y-0.5 border-primary/10"
+          variant="outline"
+          onClick={() => navigate('/sales/manual')}
+        >
+          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <ShoppingCart className="h-6 w-6" />
+          </div>
+          <span className="font-semibold text-base">Kasir (POS)</span>
+        </Button>
+
+        <Button
+          size="lg"
+          className="h-24 flex flex-col items-center justify-center gap-2 shadow-sm border bg-card hover:bg-accent/50 transition-all hover:-translate-y-0.5 border-blue-500/10"
+          variant="outline"
+          onClick={() => navigate('/purchases')}
+        >
+          <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-600">
+            <Truck className="h-6 w-6" />
+          </div>
+          <span className="font-semibold text-base">Restock / PO</span>
+        </Button>
+
+        <Button
+          size="lg"
+          className="h-24 flex flex-col items-center justify-center gap-2 shadow-sm border bg-card hover:bg-accent/50 transition-all hover:-translate-y-0.5 border-emerald-500/10"
+          variant="outline"
+          onClick={() => navigate('/products')}
+        >
+          <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+            <Package className="h-6 w-6" />
+          </div>
+          <span className="font-semibold text-base">Produk Baru</span>
+        </Button>
+
+        <Button
+          size="lg"
+          className="h-24 flex flex-col items-center justify-center gap-2 shadow-sm border bg-card hover:bg-accent/50 transition-all hover:-translate-y-0.5 border-orange-500/10"
+          variant="outline"
+          onClick={() => navigate('/inventory')}
+        >
+          <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-600">
+            <BarChart3 className="h-6 w-6" />
+          </div>
+          <span className="font-semibold text-base">Cek Stok</span>
+        </Button>
+      </div>
 
       {/* Period Selector */}
       <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>

@@ -9,6 +9,7 @@ export async function getSalesOrders(filters?: {
   startDate?: string;
   endDate?: string;
   marketplace?: string;
+  excludeMarketplace?: string; // Add this
   status?: string;
 }) {
   let query = supabase
@@ -28,6 +29,9 @@ export async function getSalesOrders(filters?: {
   if (filters?.marketplace) {
     query = query.eq('marketplace', filters.marketplace);
   }
+  if (filters?.excludeMarketplace) {
+    query = query.neq('marketplace', filters.excludeMarketplace);
+  }
   if (filters?.status) {
     query = query.eq('status', filters.status as 'pending' | 'completed' | 'cancelled' | 'returned');
   }
@@ -38,39 +42,62 @@ export async function getSalesOrders(filters?: {
 }
 
 export interface CreateSalesOrderInput {
-  order_no: string;
+  marketplace: string;
   order_date: string;
-  marketplace?: string;
+  status?: string;
+  customer_id?: string;
   customer_name?: string;
-  status: 'pending' | 'completed' | 'cancelled' | 'returned';
-  total_fees: number;
+  total_amount: number;
+  total_fees?: number;
+  total_hpp?: number;
   items: {
+    product_id?: string;
+    product_name?: string;
     variant_id: string;
+    sku_variant?: string;
     qty: number;
     unit_price: number;
     hpp: number;
   }[];
+  order_no?: string;
+  discount_amount?: number;
+  payment_method?: string;
+  payment_account_id?: string;
+  paid_amount?: number;
+  notes?: string;
 }
 
 export async function createSalesOrder(input: CreateSalesOrderInput) {
-  // Calculate totals
-  const totalAmount = input.items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
-  const totalHpp = input.items.reduce((sum, item) => sum + item.qty * item.hpp, 0);
-  const profit = totalAmount - totalHpp - input.total_fees;
+  // Always auto-generate order number via RPC
+  const { data: orderNo, error: orderNoError } = await supabase.rpc('generate_sales_order_no');
+  if (orderNoError) throw orderNoError;
 
-  // Create order
+  // Calculate HPP and profit
+  const totalHpp = input.total_hpp || input.items.reduce((sum, item) => sum + item.qty * item.hpp, 0);
+  const profit = (input.total_amount - (input.discount_amount || 0)) - totalHpp - (input.total_fees || 0);
+
+  // Determine target status.
+  // We force 'pending' initially to ensure items are inserted before 'completed' trigger fires.
+  // 'pending' is a valid Enum value and does NOT trigger stock deduction.
+  const targetStatus = (input.status || 'pending') as 'pending' | 'completed' | 'cancelled' | 'returned';
+
+  // Create order header
   const { data: order, error: orderError } = await supabase
     .from('sales_orders')
     .insert({
-      desty_order_no: input.order_no,
+      desty_order_no: orderNo,
       order_date: input.order_date,
-      marketplace: input.marketplace || null,
-      customer_name: input.customer_name || null,
-      status: input.status,
-      total_amount: totalAmount,
+      marketplace: input.marketplace,
+      customer_id: input.customer_id,
+      customer_name: input.customer_name,
+      status: 'pending', // Use 'pending' as safe initial status (valid Enum)
+      total_amount: input.total_amount,
+      total_fees: input.total_fees || 0,
       total_hpp: totalHpp,
-      total_fees: input.total_fees,
       profit,
+      discount_amount: input.discount_amount || 0,
+      payment_method: input.payment_method,
+      payment_account_id: input.payment_account_id,
     })
     .select()
     .single();
@@ -108,23 +135,19 @@ export async function createSalesOrder(input: CreateSalesOrderInput) {
 
   if (itemsError) throw itemsError;
 
-  // Deduct stock for completed orders via Stock Movement Trigger
-  // Trigger 'trigger_update_stock' handles the actual product_variant deduction
-  if (input.status === 'completed') {
-    const movements = input.items.map(item => ({
-      variant_id: item.variant_id,
-      movement_type: 'SALE' as const,
-      qty: item.qty, // Positive magnitude. Trigger subtracts for 'SALE'.
-      reference_type: 'sales_order',
-      reference_id: order.id,
-      notes: `Sale: ${input.order_no}`,
-    }));
+  // Finalize Status
+  // If target was 'completed' (or anything other than 'pending'), update now.
+  // This UPDATE will trigger 'process_sales_order_stock' if status becomes 'completed'.
+  if (targetStatus !== 'pending') {
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('sales_orders')
+      .update({ status: targetStatus })
+      .eq('id', order.id)
+      .select()
+      .single();
 
-    const { error: moveError } = await supabase
-      .from('stock_movements')
-      .insert(movements);
-
-    if (moveError) console.error('Failed to create stock movements:', moveError);
+    if (updateError) throw updateError;
+    return updatedOrder;
   }
 
   return order;
@@ -134,15 +157,17 @@ export async function createSalesOrderWithJournal(input: CreateSalesOrderInput) 
   const order = await createSalesOrder(input);
 
   if (order.status === 'completed') {
-    // Attempt auto-journaling
-    const isOffline = !input.marketplace || input.marketplace === 'Offline';
-    const method = isOffline ? 'cash' : 'credit';
-
     try {
       // Small delay to ensure DB triggers/writes are fully propogated
       await new Promise(r => setTimeout(r, 500));
 
-      await triggerAutoJournalSales(order.id, method);
+      await triggerAutoJournalSales(
+        order.id,
+        input.payment_method || 'cash',
+        input.paid_amount,
+        input.payment_account_id,
+        input.discount_amount
+      );
       console.log('Auto-journaling triggered for sales order:', order.id);
     } catch (e) {
       console.error('Failed to auto-journal sales:', e);
@@ -162,23 +187,7 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
 
   if (fetchError) throw fetchError;
 
-  // 2. RESTORE STOCK if old order was completed
-  // We must reverse the previous 'SALE' by creating a 'RETURN' movement
-  if (oldOrder.status === 'completed' && oldOrder.order_items) {
-    const returnMovements = oldOrder.order_items.map((item: any) => ({
-      variant_id: item.variant_id,
-      movement_type: 'RETURN' as const, // Adds stock
-      qty: item.qty,
-      reference_type: 'sales_order',
-      reference_id: id,
-      notes: `Correction: Edit Order ${input.order_no} (Restock)`
-    }));
-
-    const { error: restockError } = await supabase.from('stock_movements').insert(returnMovements);
-    if (restockError) console.error('Failed to restock old items:', restockError);
-  }
-
-  // 3. Perform Update
+  // 2. Perform Update
   const totalAmount = input.items.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
   const totalHpp = input.items.reduce((sum, item) => sum + item.qty * item.hpp, 0);
   const profit = totalAmount - totalHpp - input.total_fees;
@@ -190,7 +199,7 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
       order_date: input.order_date,
       marketplace: input.marketplace || null,
       customer_name: input.customer_name || null,
-      status: input.status,
+      status: input.status as 'pending' | 'completed' | 'cancelled' | 'returned',
       total_amount: totalAmount,
       total_hpp: totalHpp,
       total_fees: input.total_fees,
@@ -240,23 +249,10 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
 
   if (itemsError) throw itemsError;
 
-  // 4. DEDUCT STOCK if new status is completed
-  if (input.status === 'completed') {
-    const movements = input.items.map(item => ({
-      variant_id: item.variant_id,
-      movement_type: 'SALE' as const,
-      qty: item.qty, // Positive. Trigger subtracts.
-      reference_type: 'sales_order',
-      reference_id: order.id,
-      notes: `Sale: ${input.order_no} (Updated)`,
-    }));
-
-    const { error: moveError } = await supabase
-      .from('stock_movements')
-      .insert(movements);
-
-    if (moveError) console.error('Failed to deduct stock for updated order:', moveError);
-  }
+  // 4. STOCK DEDUCTION / RESTORATION handled by Database Trigger
+  // trigger_sales_order_stock handles:
+  // - Deduct if status -> completed
+  // - Restore if status completed -> other
 
   return order;
 }
@@ -276,9 +272,16 @@ export async function updateSalesOrderWithJournal(id: string, input: CreateSales
   // For now, let's just support triggering it if we move to completed.
   // Trigger journal if becoming completed (and wasn't before)
   if (order.status === 'completed' && oldOrder?.status !== 'completed') {
-    const method = input.marketplace ? 'credit' : 'cash';
+    const method = input.payment_method || (input.marketplace ? 'credit' : 'cash');
     try {
-      await triggerAutoJournalSales(order.id, method, undefined, false);
+      await triggerAutoJournalSales(
+        order.id,
+        method,
+        input.paid_amount,
+        input.payment_account_id,
+        input.discount_amount,
+        false
+      );
       console.log('Auto-journaling triggered for updated sales order:', order.id);
     } catch (e) {
       console.error('Failed to auto-journal sales update:', e);
@@ -287,9 +290,16 @@ export async function updateSalesOrderWithJournal(id: string, input: CreateSales
 
   // Trigger journal REVERSAL if becoming 'returned'
   if (order.status === 'returned' && oldOrder?.status !== 'returned') {
-    const method = input.marketplace ? 'credit' : 'cash'; // Reversal uses same method
+    const method = input.payment_method || (input.marketplace ? 'credit' : 'cash'); // Reversal uses same method
     try {
-      await triggerAutoJournalSales(order.id, method, undefined, true);
+      await triggerAutoJournalSales(
+        order.id,
+        method,
+        input.paid_amount,
+        input.payment_account_id,
+        input.discount_amount,
+        true
+      );
       console.log('Auto-journaling RETURN triggered for:', order.id);
     } catch (e) {
       console.error('Failed to trigger return journal:', e);
@@ -644,12 +654,21 @@ export async function getSalesStats(period: 'today' | 'week' | 'month' | 'year')
 
 export async function triggerAutoJournalSales(
   salesOrderId: string,
-  paymentMethod: 'cash' | 'bank' | 'credit',
-  amount?: number,
+  paymentMethod: string,
+  paidAmount?: number,
+  paymentAccountId?: string,
+  discountAmount?: number,
   isReturn: boolean = false
 ) {
   const { data, error } = await supabase.functions.invoke('auto-journal-sales', {
-    body: { salesOrderId, paymentMethod, amount, is_return: isReturn }
+    body: {
+      salesOrderId,
+      paymentMethod,
+      amount: paidAmount,
+      paymentAccountId,
+      discountAmount,
+      is_return: isReturn
+    }
   });
 
   if (error) throw error;

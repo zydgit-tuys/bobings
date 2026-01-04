@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Plus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,21 +11,37 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DataTable } from "@/components/shared/DataTable";
-import { useJournalEntries, useJournalEntry } from "@/hooks/use-accounting";
+import { useJournalEntries } from "@/hooks/use-accounting";
 import { JournalEntryForm } from "./JournalEntryForm";
+import { JournalEntryDetailView } from "./JournalEntryDetailView";
 
 export function JournalEntries() {
   const [showForm, setShowForm] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [filters, setFilters] = useState({
-    startDate: "",
-    endDate: "",
+    startDate: searchParams.get("start") || "",
+    endDate: searchParams.get("end") || "",
+    referenceId: searchParams.get("ref_id") || "",
   });
+
+  // Sync filters from URL on mount only (optional, or keep 2-way sync)
+  useEffect(() => {
+    const refId = searchParams.get("ref_id");
+    if (refId) {
+      setFilters(f => ({ ...f, referenceId: refId }));
+    }
+  }, [searchParams]);
 
   const { data: entries, isLoading } = useJournalEntries(
     Object.fromEntries(Object.entries(filters).filter(([_, v]) => v))
   );
-  const { data: viewEntry } = useJournalEntry(viewId ?? "");
+
+  const clearFilters = () => {
+    setFilters({ startDate: "", endDate: "", referenceId: "" });
+    setSearchParams({}); // Clear URL params
+  };
 
   const columns = [
     {
@@ -58,6 +75,19 @@ export function JournalEntries() {
   return (
     <div>
       <div className="flex flex-wrap gap-4 mb-4">
+        {filters.referenceId && (
+          <div className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+            <span>Filtered by Reference</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0 hover:bg-transparent"
+              onClick={clearFilters}
+            >
+              &times;
+            </Button>
+          </div>
+        )}
         <Input
           type="date"
           value={filters.startDate}
@@ -72,7 +102,7 @@ export function JournalEntries() {
         />
         <Button
           variant="outline"
-          onClick={() => setFilters({ startDate: "", endDate: "" })}
+          onClick={clearFilters}
         >
           Clear
         </Button>
@@ -98,61 +128,7 @@ export function JournalEntries() {
           <DialogHeader>
             <DialogTitle>Journal Entry Details</DialogTitle>
           </DialogHeader>
-          {viewEntry && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Date:</span>{" "}
-                  {format(new Date(viewEntry.entry_date), "dd MMM yyyy")}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Reference:</span>{" "}
-                  {viewEntry.reference_type ?? "-"}
-                </div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Description:</span>{" "}
-                {viewEntry.description}
-              </div>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="text-left p-2">Account</th>
-                      <th className="text-right p-2">Debit</th>
-                      <th className="text-right p-2">Credit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {viewEntry.journal_lines?.map((line: any) => (
-                      <tr key={line.id} className="border-t">
-                        <td className="p-2">
-                          {line.chart_of_accounts?.code} - {line.chart_of_accounts?.name}
-                        </td>
-                        <td className="text-right p-2">
-                          {line.debit > 0 ? `Rp ${line.debit.toLocaleString()}` : "-"}
-                        </td>
-                        <td className="text-right p-2">
-                          {line.credit > 0 ? `Rp ${line.credit.toLocaleString()}` : "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted font-medium">
-                    <tr>
-                      <td className="p-2">Total</td>
-                      <td className="text-right p-2">
-                        Rp {viewEntry.total_debit.toLocaleString()}
-                      </td>
-                      <td className="text-right p-2">
-                        Rp {viewEntry.total_credit.toLocaleString()}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          )}
+          {viewId && <JournalEntryDetailView entryId={viewId} />}
         </DialogContent>
       </Dialog>
     </div>

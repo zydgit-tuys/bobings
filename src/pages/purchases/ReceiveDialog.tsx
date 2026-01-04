@@ -5,11 +5,14 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useReceivePurchaseLines } from "@/hooks/use-purchases";
+import { triggerAutoJournalPurchase } from "@/lib/api/purchases";
+import { toast } from "sonner";
 
 interface ReceiveDialogProps {
   open: boolean;
@@ -31,11 +34,56 @@ export function ReceiveDialog({ open, onOpenChange, purchase }: ReceiveDialogPro
     }
   }, [purchase]);
 
-  const handleReceive = () => {
-    receivePurchase.mutate(
-      { purchaseId: purchase.id, receivedQtys: quantities },
-      { onSuccess: () => onOpenChange(false) }
-    );
+  const handleReceive = async () => {
+    try {
+      // Calculate Cumulative Quantity (Previous + New Receipt)
+      const finalQuantities: Record<string, number> = {};
+
+      Object.entries(quantities).forEach(([lineId, qtyNow]) => {
+        const line = purchase.purchase_order_lines.find((l: any) => l.id === lineId);
+        if (line) {
+          finalQuantities[lineId] = (line.qty_received || 0) + qtyNow;
+        }
+      });
+
+      // Step 1: Receive goods (updates inventory)
+      await receivePurchase.mutateAsync(
+        { purchaseId: purchase.id, receivedQtys: finalQuantities }
+      );
+
+      // Calculate Journal Amount for THIS receipt only
+      let receiptJournalAmount = 0;
+      Object.entries(quantities).forEach(([lineId, qtyNow]) => {
+        const line = purchase.purchase_order_lines.find((l: any) => l.id === lineId);
+        if (line && qtyNow > 0) {
+          receiptJournalAmount += qtyNow * (line.unit_cost || 0);
+        }
+      });
+
+      // Step 2: Create journal entry for liability (INCREMENTAL)
+      if (receiptJournalAmount > 0) {
+        try {
+          await triggerAutoJournalPurchase(
+            purchase.id,
+            'receive', // Create Hutang Supplier
+            undefined, // No payment type for receive
+            receiptJournalAmount, // Uses Calculated Amount
+            undefined  // No bank account
+          );
+          toast.success(`Barang diterima & Jurnal Hutang dibuat - Rp ${receiptJournalAmount.toLocaleString()}`);
+        } catch (journalError: any) {
+          // Goods receipt succeeded but journal failed - warn user
+          toast.warning(
+            `Barang berhasil diterima, tapi jurnal otomatis gagal: ${journalError.message}. Silakan buat jurnal manual.`,
+            { duration: 6000 }
+          );
+        }
+      }
+
+      onOpenChange(false);
+    } catch (error: any) {
+      toast.error(`Gagal menerima barang: ${error.message}`);
+    }
   };
 
   if (!purchase) return null;
@@ -45,6 +93,9 @@ export function ReceiveDialog({ open, onOpenChange, purchase }: ReceiveDialogPro
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Receive Goods - {purchase.purchase_no}</DialogTitle>
+          <DialogDescription>
+            Masukkan jumlah barang yang diterima untuk memperbarui stok inventaris.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 max-h-96 overflow-y-auto">

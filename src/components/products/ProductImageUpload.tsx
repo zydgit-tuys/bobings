@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ImagePlus, X, Loader2, GripVertical } from 'lucide-react';
+import { ImagePlus, X, Loader2, GripVertical, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -21,19 +20,25 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { ProductImage } from '@/lib/api/product-images';
+import { useCreateProductImage, useDeleteProductImage, useReorderProductImages, useSetPrimaryImage } from '@/hooks/use-product-images';
 
 interface Props {
   productId: string;
-  images: string[];
-  onImagesChange: (images: string[]) => void;
+  images: ProductImage[];
+  onImagesChange: (images: ProductImage[]) => void;
 }
 
 function SortableImageItem({
-  url,
-  onRemove
+  image,
+  onRemove,
+  onSetPrimary,
+  isPrimary
 }: {
-  url: string;
+  image: ProductImage;
   onRemove: () => void;
+  onSetPrimary: () => void;
+  isPrimary: boolean;
 }) {
   const {
     attributes,
@@ -42,7 +47,7 @@ function SortableImageItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: url });
+  } = useSortable({ id: image.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -55,39 +60,73 @@ function SortableImageItem({
       style={style}
       className={cn(
         "relative group aspect-square rounded-lg overflow-hidden border bg-muted",
-        isDragging && "opacity-50 z-50"
+        isDragging && "opacity-50 z-50",
+        isPrimary && "ring-2 ring-primary ring-offset-2"
       )}
     >
       <img
-        src={url}
+        src={image.image_url}
         alt="Product"
         className="w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-        <button
-          {...attributes}
-          {...listeners}
-          className="p-2 md:p-1.5 bg-white/90 rounded cursor-grab hover:bg-white touch-manipulation"
-        >
-          <GripVertical className="h-5 w-5 md:h-4 md:w-4 text-muted-foreground" />
-        </button>
-        <button
-          onClick={onRemove}
-          className="p-2 md:p-1.5 bg-red-500 rounded hover:bg-red-600 touch-manipulation"
-        >
-          <X className="h-5 w-5 md:h-4 md:w-4 text-white" />
-        </button>
+
+      {/* Primary Badge */}
+      {isPrimary && (
+        <div className="absolute top-2 left-2 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1">
+          <Star className="w-3 h-3 fill-current" />
+          Primary
+        </div>
+      )}
+
+      {/* Hover Overlay */}
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+        <div className="flex gap-2">
+          {!isPrimary && (
+            <button
+              onClick={onSetPrimary}
+              type="button"
+              className="p-1.5 bg-white/90 rounded hover:bg-white touch-manipulation"
+              title="Set as Primary"
+            >
+              <Star className="h-4 w-4 text-yellow-500" />
+            </button>
+          )}
+          <button
+            {...attributes}
+            {...listeners}
+            type="button"
+            className="p-1.5 bg-white/90 rounded cursor-grab hover:bg-white touch-manipulation"
+            title="Drag to reorder"
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={onRemove}
+            type="button"
+            className="p-1.5 bg-red-500 rounded hover:bg-red-600 touch-manipulation"
+            title="Remove"
+          >
+            <X className="h-4 w-4 text-white" />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 export function ProductImageUpload({ productId, images, onImagesChange }: Props) {
+  const isEditMode = productId !== "new";
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // API Hooks
+  const createImg = useCreateProductImage();
+  const deleteImg = useDeleteProductImage();
+  const reorderImg = useReorderProductImages();
+  const setPrimaryImg = useSetPrimaryImage();
+
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -98,7 +137,7 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
     if (!files || files.length === 0) return;
 
     setUploading(true);
-    const newUrls: string[] = [];
+    const newImages: ProductImage[] = [];
 
     try {
       const { uploadImage, validateImageFile } = await import('@/lib/utils/imageUpload');
@@ -113,27 +152,60 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
 
         try {
           // Upload with WebP conversion & compression
-          const url = await uploadImage(file, {
-            folder: `products/${productId}`,
+          const result = await uploadImage(file, {
+            folder: `products/${productId === 'new' ? 'temp' : productId}`,
             quality: 0.8,
             maxWidth: 1920,
             maxHeight: 1920,
           });
 
-          newUrls.push(url);
+          const maxOrder = images.length > 0
+            ? Math.max(...images.map(i => i.display_order))
+            : -1;
+
+          const newImageObj: any = {
+            product_id: productId,
+            image_url: result.publicUrl,
+            storage_path: result.storagePath,
+            display_order: maxOrder + 1 + newImages.length,
+            is_primary: images.length === 0 && newImages.length === 0, // First image is primary
+            file_size: result.fileSize,
+            width: result.width,
+            height: result.height,
+            alt_text: file.name.split('.')[0],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          if (isEditMode) {
+            // Direct DB Create
+            const savedImg = await createImg.mutateAsync(newImageObj);
+            newImages.push(savedImg); // Use returned object with real ID
+          } else {
+            // Local State only (Create Mode)
+            // Generate temp ID
+            newImageObj.id = `temp-${Date.now()}-${Math.random()}`;
+            newImages.push(newImageObj);
+          }
         } catch (error: any) {
           toast.error(`Failed to upload ${file.name}: ${error.message}`);
           console.error(error);
         }
       }
 
-      if (newUrls.length > 0) {
-        onImagesChange([...images, ...newUrls]);
-        toast.success(`${newUrls.length} image(s) uploaded (WebP, compressed)`);
+      if (newImages.length > 0) {
+        if (isEditMode) {
+          // Provide optimistic update or wait for invalidation?
+          // The hook invalidates queries, so parent should re-render.
+          // But we can call onImagesChange to update local view instantly if parent supports it
+        } else {
+          onImagesChange([...images, ...newImages]);
+        }
+        toast.success(`${newImages.length} image(s) processed`);
       }
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload images');
+      toast.error('Failed to upload process');
     } finally {
       setUploading(false);
       if (inputRef.current) {
@@ -142,15 +214,37 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
     }
   };
 
-  const handleRemove = async (urlToRemove: string) => {
+  const handleRemove = async (image: ProductImage) => {
     try {
-      const { deleteImage } = await import('@/lib/utils/imageUpload');
-      await deleteImage(urlToRemove);
-      onImagesChange(images.filter(url => url !== urlToRemove));
-      toast.success('Image removed');
+      if (isEditMode) {
+        // Delete from DB (and ideally storage via trigger or separate call)
+        await deleteImg.mutateAsync(image.id);
+
+        // Cleanup storage too
+        const { deleteImage } = await import('@/lib/utils/imageUpload');
+        await deleteImage(image.image_url).catch(console.error); // Ignore storage error if DB deleted
+      } else {
+        // Create Mode: Just remove from list and storage
+        const { deleteImage } = await import('@/lib/utils/imageUpload');
+        await deleteImage(image.image_url);
+        onImagesChange(images.filter(img => img.id !== image.id));
+      }
     } catch (error: any) {
       console.error('Failed to delete:', error);
       toast.error('Failed to delete image');
+    }
+  };
+
+  const handleSetPrimary = async (image: ProductImage) => {
+    if (isEditMode) {
+      await setPrimaryImg.mutateAsync({ productId, imageId: image.id });
+    } else {
+      // Local update
+      const updated = images.map(img => ({
+        ...img,
+        is_primary: img.id === image.id
+      }));
+      onImagesChange(updated);
     }
   };
 
@@ -158,14 +252,30 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = images.indexOf(active.id as string);
-      const newIndex = images.indexOf(over.id as string);
-      onImagesChange(arrayMove(images, oldIndex, newIndex));
+      const oldIndex = images.findIndex(img => img.id === active.id);
+      const newIndex = images.findIndex(img => img.id === over.id);
+
+      const newOrder = arrayMove(images, oldIndex, newIndex);
+
+      // Update display_order property
+      const updatedImages = newOrder.map((img, idx) => ({
+        ...img,
+        display_order: idx
+      }));
+
+      onImagesChange(updatedImages); // Optimistic update
+
+      if (isEditMode) {
+        reorderImg.mutate({
+          productId,
+          imageIds: updatedImages.map(img => img.id)
+        });
+      }
     }
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{images.length} images</span>
         <Button
@@ -177,9 +287,9 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
           onClick={() => inputRef.current?.click()}
         >
           {uploading ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
           ) : (
-            <ImagePlus className="h-3.5 w-3.5 mr-1" />
+            <ImagePlus className="h-3 w-3 mr-1" />
           )}
           Add
         </Button>
@@ -199,13 +309,15 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext items={images} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-4 gap-2">
-              {images.map((url) => (
+          <SortableContext items={images.map(i => i.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-4 gap-1.5">
+              {images.map((image) => (
                 <SortableImageItem
-                  key={url}
-                  url={url}
-                  onRemove={() => handleRemove(url)}
+                  key={image.id}
+                  image={image}
+                  isPrimary={image.is_primary}
+                  onRemove={() => handleRemove(image)}
+                  onSetPrimary={() => handleSetPrimary(image)}
                 />
               ))}
             </div>
@@ -213,10 +325,10 @@ export function ProductImageUpload({ productId, images, onImagesChange }: Props)
         </DndContext>
       ) : (
         <div
-          className="border-2 border-dashed rounded-lg p-6 text-center text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
+          className="border-2 border-dashed rounded-lg p-4 text-center text-muted-foreground cursor-pointer hover:border-primary/50 transition-colors"
           onClick={() => inputRef.current?.click()}
         >
-          <ImagePlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <ImagePlus className="h-6 w-6 mx-auto mb-1 opacity-50" />
           <p className="text-xs">Click to upload</p>
         </div>
       )}

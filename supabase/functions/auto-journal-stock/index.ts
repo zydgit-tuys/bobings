@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Setting keys for account mapping
+// Legacy Settings Keys (Fallback only)
 const SETTING_KEYS = {
   ACCOUNT_PERSEDIAAN: 'account_persediaan',
   ACCOUNT_BIAYA_PENYESUAIAN_STOK: 'account_biaya_penyesuaian_stok',
@@ -19,7 +19,7 @@ interface StockAdjustmentRequest {
   unitCost: number;
 }
 
-// Helper function to get account mapping from settings
+// Helper function to get account mapping from settings (Fallback)
 async function getAccountMapping(supabase: any, settingKey: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('app_settings')
@@ -40,11 +40,32 @@ serve(async (req) => {
   }
 
   try {
-    console.log('📝 Starting auto journal for stock adjustment...');
+    console.log('📝 Starting auto journal for stock adjustment (V2)...');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check accounting period status
+    const { data: periodStatus, error: periodError } = await supabase
+      .rpc('get_current_period_status')
+      .single();
+
+    if (periodError) {
+      console.error('Error checking period status:', periodError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unable to verify accounting period status' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!periodStatus.is_open) {
+      console.error('Period not open:', periodStatus.message);
+      return new Response(
+        JSON.stringify({ success: false, error: periodStatus.message }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const { variantId, adjustmentQty, reason, unitCost } = await req.json() as StockAdjustmentRequest;
 
@@ -55,25 +76,67 @@ serve(async (req) => {
       );
     }
 
-    // Fetch account mappings from settings
-    const [persediaanAccountId, biayaPenyesuaianAccountId] = await Promise.all([
-      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_PERSEDIAAN),
-      getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_BIAYA_PENYESUAIAN_STOK),
-    ]);
+    // ==========================================
+    // V2 MAPPING LOOKUP
+    // ==========================================
+    const getAccountFromV2 = async (
+      eventType: string,
+      context: string | null,
+      side: 'debit' | 'credit'
+    ): Promise<string | null> => {
+      let query = supabase
+        .from('journal_account_mappings')
+        .select('account_id, priority')
+        .eq('event_type', eventType)
+        .eq('side', side)
+        .eq('is_active', true);
 
-    // Validate required accounts exist
-    if (!persediaanAccountId) {
-      console.error('❌ Persediaan account not configured in settings');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Akun Persediaan belum dikonfigurasi di Settings' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (context) {
+        query = query.or(`event_context.eq.${context},event_context.is.null`);
+      } else {
+        query = query.is('event_context', null);
+      }
+
+      const { data, error } = await query.order('priority', { ascending: false }).limit(1).maybeSingle();
+      if (error) console.error("V2 Mapping Error:", error);
+      return data?.account_id || null;
+    };
+
+    // Determine Context (increase/decrease)
+    const context = adjustmentQty >= 0 ? 'increase' : 'decrease';
+
+    // Resolve Accounts
+    // 1. Debit Account
+    const debitAccountIdv2 = await getAccountFromV2('stock_adjustment', context, 'debit');
+
+    // 2. Credit Account
+    const creditAccountIdv2 = await getAccountFromV2('stock_adjustment', context, 'credit');
+
+    // Fallback Logic (if V2 returns null)
+    let debitAccountId = debitAccountIdv2;
+    let creditAccountId = creditAccountIdv2;
+
+    if (!debitAccountId || !creditAccountId) {
+      console.log("⚠️ V2 Mapping missing, falling back to V1 Settings");
+      const accPersediaan = await getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_PERSEDIAAN);
+      const accAdjustment = await getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_BIAYA_PENYESUAIAN_STOK); // Often mapped to expense or gain
+
+      if (context === 'increase') {
+        // Debit Persediaan, Credit Gain
+        debitAccountId = debitAccountId || accPersediaan;
+        creditAccountId = creditAccountId || accAdjustment;
+      } else {
+        // Debit Loss, Credit Persediaan
+        debitAccountId = debitAccountId || accAdjustment;
+        creditAccountId = creditAccountId || accPersediaan;
+      }
     }
 
-    if (!biayaPenyesuaianAccountId) {
-      console.error('❌ Biaya Penyesuaian Stok account not configured in settings');
+    // Validate accounts exist
+    if (!debitAccountId || !creditAccountId) {
+      console.error('❌ Critical: Missing Account Configuration');
       return new Response(
-        JSON.stringify({ success: false, error: 'Akun Biaya Penyesuaian Stok belum dikonfigurasi di Settings' }),
+        JSON.stringify({ success: false, error: 'Konfigurasi Akun Journal tidak lengkap (Cek V2 Tables atau V1 Settings)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -89,7 +152,6 @@ serve(async (req) => {
       .single();
 
     if (variantError || !variant) {
-      console.error('❌ Error fetching variant:', variantError);
       return new Response(
         JSON.stringify({ success: false, error: 'Variant not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -100,33 +162,15 @@ serve(async (req) => {
     const productName = product?.name || variant.sku_variant;
     const adjustmentValue = Math.abs(adjustmentQty) * unitCost;
 
-    console.log(`📦 Processing stock adjustment for ${productName}: ${adjustmentQty > 0 ? '+' : ''}${adjustmentQty}`);
+    console.log(`📦 Processing stock adjustment (${context}) for ${productName}: ${adjustmentQty}`);
 
-    // Create stock movement first
-    const { data: movement, error: movementError } = await supabase
-      .from('stock_movements')
-      .insert({
-        variant_id: variantId,
-        movement_type: 'ADJUSTMENT',
-        qty: adjustmentQty, // can be negative for reduction
-        reference_type: 'adjustment',
-        notes: reason || 'Stock adjustment',
-      })
-      .select()
-      .single();
-
-    if (movementError) {
-      console.error('❌ Error creating stock movement:', movementError);
-      throw new Error(`Failed to create stock movement: ${movementError.message}`);
-    }
-
-    // Create journal entry
+    // Create journal entry (stock movement already created by adjustStock RPC)
     const { data: journalEntry, error: entryError } = await supabase
       .from('journal_entries')
       .insert({
         entry_date: new Date().toISOString().split('T')[0],
         reference_type: 'stock_adjustment',
-        reference_id: movement.id,
+        reference_id: variantId, // Use variant ID as reference
         description: `Penyesuaian stok: ${productName} (${adjustmentQty > 0 ? '+' : ''}${adjustmentQty})`,
       })
       .select()
@@ -139,45 +183,27 @@ serve(async (req) => {
 
     const journalLines: any[] = [];
 
-    if (adjustmentQty > 0) {
-      // Stock increase (e.g., found items, returns)
-      // Debit: Persediaan (inventory increases)
-      // Credit: Stock Adjustment (gain)
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: persediaanAccountId,
-        debit: adjustmentValue,
-        credit: 0,
-        description: `Penambahan persediaan - ${productName}`,
-      });
+    // LINE 1: DEBIT
+    journalLines.push({
+      entry_id: journalEntry.id,
+      account_id: debitAccountId,
+      debit: adjustmentValue,
+      credit: 0,
+      description: adjustmentQty > 0
+        ? `Penambahan Persediaan - ${productName}`
+        : `Beban Penyesuaian Stok - ${reason}`
+    });
 
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: biayaPenyesuaianAccountId,
-        debit: 0,
-        credit: adjustmentValue,
-        description: `Penyesuaian stok (keuntungan) - ${reason}`,
-      });
-    } else {
-      // Stock decrease (e.g., damaged, lost, expired)
-      // Debit: Stock Adjustment Expense (loss)
-      // Credit: Persediaan (inventory decreases)
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: biayaPenyesuaianAccountId,
-        debit: adjustmentValue,
-        credit: 0,
-        description: `Penyesuaian stok (kerugian) - ${reason}`,
-      });
-
-      journalLines.push({
-        entry_id: journalEntry.id,
-        account_id: persediaanAccountId,
-        debit: 0,
-        credit: adjustmentValue,
-        description: `Pengurangan persediaan - ${productName}`,
-      });
-    }
+    // LINE 2: CREDIT
+    journalLines.push({
+      entry_id: journalEntry.id,
+      account_id: creditAccountId,
+      debit: 0,
+      credit: adjustmentValue,
+      description: adjustmentQty > 0
+        ? `Keuntungan Penyesuaian Stok - ${reason}`
+        : `Pengurangan Persediaan - ${productName}`
+    });
 
     // Insert journal lines
     const { error: linesError } = await supabase
@@ -195,7 +221,6 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         journalEntryId: journalEntry.id,
-        movementId: movement.id,
         adjustmentQty,
         adjustmentValue,
       }),

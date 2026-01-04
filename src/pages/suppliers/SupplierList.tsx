@@ -18,29 +18,35 @@ export default function SupplierList() {
   const [showDialog, setShowDialog] = useState(false);
 
   const columns = [
-    { key: "code", header: "Code", primary: true },
-    { key: "name", header: "Name" },
-    { key: "contact_person", header: "Contact Person", hideOnMobile: true },
+    {
+      key: "po",
+      header: "",
+      render: (item: Supplier) => (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/purchases/new?supplier=${item.id}`);
+          }}
+          className="bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 active:scale-95 flex items-center gap-1 shadow-sm border-primary/20"
+        >
+          <ShoppingCart className="h-3 w-3" />
+          Create PO
+        </Button>
+      ),
+    },
+    { key: "code", header: "Code", primary: true, sortable: true },
+    { key: "name", header: "Name", sortable: true },
+    { key: "contact_person", header: "Contact Person", hideOnMobile: true, sortable: true },
     { key: "phone", header: "Phone", hideOnMobile: true },
     { key: "email", header: "Email", hideOnMobile: true },
-    { key: "city", header: "City", hideOnMobile: true },
+    { key: "city", header: "City", hideOnMobile: true, sortable: true },
     {
       key: "actions",
       header: "",
       render: (item: Supplier) => (
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/purchases?supplier=${item.id}`);
-            }}
-            className="hidden md:flex"
-          >
-            <ShoppingCart className="h-4 w-4 mr-1" />
-            PO
-          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -108,22 +114,22 @@ export default function SupplierList() {
         {item.city && <span>{item.city}</span>}
       </div>
       <Button
-        variant="outline"
+        variant="secondary"
         size="sm"
         onClick={(e) => {
           e.stopPropagation();
-          navigate(`/purchases?supplier=${item.id}`);
+          navigate(`/purchases/new?supplier=${item.id}`);
         }}
-        className="mt-2 w-full"
+        className="mt-2 w-full bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 shadow-sm border-primary/20"
       >
-        <ShoppingCart className="h-4 w-4 mr-2" />
-        Lihat Purchase Orders
+        <ShoppingCart className="h-4 w-4" />
+        Buat Purchase Order
       </Button>
     </div>
   );
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Suppliers"
         description="Manage your supplier directory"

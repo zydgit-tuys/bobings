@@ -10,7 +10,14 @@ export async function getPurchases() {
     .from('purchases')
     .select(`
       *,
-      suppliers(id, code, name)
+      suppliers(id, code, name),
+      purchase_order_lines(
+        id, qty_ordered, qty_received, unit_cost, notes,
+        product_variants(
+           id, sku_variant,
+           products(name)
+        )
+      )
     `)
     .order('created_at', { ascending: false });
 
@@ -27,7 +34,7 @@ export async function getPurchase(id: string) {
       purchase_order_lines(
         *,
         product_variants(
-          id, sku_variant, price, hpp,
+          id, sku_variant, price,
           products(id, name, sku_master)
         )
       )
@@ -40,7 +47,7 @@ export async function getPurchase(id: string) {
 }
 
 export async function createPurchase(purchase: {
-  purchase_no: string;
+  purchase_no?: string;
   supplier_id: string;
   order_date?: string;
   expected_date?: string;
@@ -51,7 +58,6 @@ export async function createPurchase(purchase: {
     .insert({
       ...purchase,
       status: 'draft',
-      order_date: purchase.order_date || new Date().toISOString().split('T')[0],
     })
     .select()
     .single();
@@ -63,10 +69,20 @@ export async function createPurchase(purchase: {
 export async function updatePurchase(id: string, purchase: Partial<Purchase>) {
   const { data, error } = await supabase
     .from('purchases')
-    .update({ ...purchase, updated_at: new Date().toISOString() })
+    .update(purchase)
     .eq('id', id)
     .select()
     .single();
+
+  if (error) throw error;
+  if (error) throw error;
+  return data;
+}
+
+export async function confirmPurchase(id: string) {
+  const { data, error } = await supabase.rpc('confirm_purchase_order', {
+    p_purchase_id: id
+  });
 
   if (error) throw error;
   return data;
@@ -97,10 +113,7 @@ export async function addPurchaseLine(line: {
 }) {
   const { data, error } = await supabase
     .from('purchase_order_lines')
-    .insert({
-      ...line,
-      subtotal: line.qty_ordered * line.unit_cost,
-    })
+    .insert(line)
     .select()
     .single();
 
@@ -109,26 +122,9 @@ export async function addPurchaseLine(line: {
 }
 
 export async function updatePurchaseLine(id: string, line: Partial<PurchaseOrderLine>) {
-  const updateData: Partial<PurchaseOrderLine> = { ...line };
-
-  // Recalculate subtotal if qty or cost changed
-  if (line.qty_ordered !== undefined || line.unit_cost !== undefined) {
-    const { data: current } = await supabase
-      .from('purchase_order_lines')
-      .select('qty_ordered, unit_cost')
-      .eq('id', id)
-      .single();
-
-    if (current) {
-      const qty = line.qty_ordered ?? current.qty_ordered;
-      const cost = line.unit_cost ?? current.unit_cost;
-      updateData.subtotal = qty * cost;
-    }
-  }
-
   const { data, error } = await supabase
     .from('purchase_order_lines')
-    .update(updateData)
+    .update(line)
     .eq('id', id)
     .select()
     .single();
@@ -147,74 +143,44 @@ export async function deletePurchaseLine(id: string) {
 }
 
 export async function receivePurchaseLines(purchaseId: string, receivedQtys: Record<string, number>) {
-  const updates = Object.entries(receivedQtys).map(([lineId, qty]) =>
-    supabase
-      .from('purchase_order_lines')
-      .update({ qty_received: qty })
-      .eq('id', lineId)
-  );
+  // Format items for RPC: [{ line_id: "...", qty: 123 }]
+  const items = Object.entries(receivedQtys).map(([lineId, qty]) => ({
+    line_id: lineId,
+    qty: qty
+  }));
 
-  await Promise.all(updates);
+  const { error } = await supabase.rpc('receive_purchase_lines_atomic', {
+    p_purchase_id: purchaseId,
+    p_items: items
+  });
 
-  // Update purchase status
-  const { data: lines } = await supabase
-    .from('purchase_order_lines')
-    .select('qty_ordered, qty_received')
-    .eq('purchase_id', purchaseId);
-
-  if (lines) {
-    const allReceived = lines.every(l => l.qty_received >= l.qty_ordered);
-    const someReceived = lines.some(l => l.qty_received > 0);
-
-    const status = allReceived ? 'received' : someReceived ? 'partial' : 'ordered';
-
-    await supabase
-      .from('purchases')
-      .update({
-        status,
-        received_date: allReceived ? new Date().toISOString().split('T')[0] : null
-      })
-      .eq('id', purchaseId);
-
-    // Note: Journal entry is NOT created here
-    // Journal will be created when payment is made via PaymentDialog
-  }
+  if (error) throw error;
 }
 
-// Trigger auto journal for purchase transactions
 export async function triggerAutoJournalPurchase(
   purchaseId: string,
-  paymentType: 'cash' | 'bank' | 'hutang',
+  operationType: 'receive' | 'payment',
+  paymentType?: 'cash' | 'bank',  // Optional, required for 'payment' operation
   amount?: number,
   bankAccountId?: string
 ) {
   const { data, error } = await supabase.functions.invoke('auto-journal-purchase', {
-    body: { purchaseId, paymentType, amount, bankAccountId }
+    body: { purchaseId, operationType, paymentType, amount, bankAccountId }
   });
 
-  if (error) throw error;
+  if (error) {
+    // Extract more specific error message if available
+    const errorMessage = error.message || 'Unknown error from Edge Function';
+    throw new Error(errorMessage);
+  }
+
+  // Check if the response indicates an error
+  if (data && !data.success && data.error) {
+    throw new Error(data.error);
+  }
+
   return data;
 }
 
-// Generate next purchase number (Daily sequence)
-export async function generatePurchaseNo() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  const prefix = `PO-${year}${month}${day}`;
-
-  const { data } = await supabase
-    .from('purchases')
-    .select('purchase_no')
-    .like('purchase_no', `${prefix}%`)
-    .order('purchase_no', { ascending: false })
-    .limit(1);
-
-  if (data && data.length > 0) {
-    const lastNo = parseInt(data[0].purchase_no.slice(-4)) || 0;
-    return `${prefix}${String(lastNo + 1).padStart(4, '0')}`;
-  }
-
-  return `${prefix}0001`;
-}
+// Note: Purchase number generation is now handled by database trigger
+// See: supabase/migrations/20260102_refactor_po_logic.sql

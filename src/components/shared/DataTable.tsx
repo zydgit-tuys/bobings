@@ -12,6 +12,7 @@ import { TablePagination } from "./TablePagination";
 import { usePagination } from "@/hooks/use-pagination";
 import { Input } from "@/components/ui/input";
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Card } from "@/components/ui/card";
@@ -39,6 +40,9 @@ interface DataTableProps<T> {
   showPagination?: boolean;
   showFilters?: boolean;
   mobileCardRender?: (item: T) => React.ReactNode;
+  enableSelection?: boolean;
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -51,6 +55,9 @@ export function DataTable<T extends { id: string }>({
   showPagination = true,
   showFilters = true,
   mobileCardRender,
+  enableSelection = false,
+  selectedIds = [],
+  onSelectionChange,
 }: DataTableProps<T>) {
   const isMobile = useIsMobile();
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -143,6 +150,23 @@ export function DataTable<T extends { id: string }>({
     if (sortKey !== key) return <ArrowUpDown className="h-4 w-4 text-muted-foreground/50" />;
     if (sortDirection === "asc") return <ArrowUp className="h-4 w-4" />;
     return <ArrowDown className="h-4 w-4" />;
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = data.map(item => item.id);
+      onSelectionChange?.(allIds);
+    } else {
+      onSelectionChange?.([]);
+    }
+  };
+
+  const handleSelectRow = (id: string, checked: boolean) => {
+    if (checked) {
+      onSelectionChange?.([...selectedIds, id]);
+    } else {
+      onSelectionChange?.(selectedIds.filter(selectedId => selectedId !== id));
+    }
   };
 
   if (isLoading) {
@@ -302,6 +326,7 @@ export function DataTable<T extends { id: string }>({
           <TableHeader>
             {showFilterRow && showFilters && (
               <TableRow className="bg-muted/30 hover:bg-muted/30">
+                {enableSelection && <TableHead />}
                 {columns.map((col) => (
                   <TableHead key={`filter-${col.key}`} className="py-2">
                     {col.filterable !== false ? (
@@ -317,6 +342,14 @@ export function DataTable<T extends { id: string }>({
               </TableRow>
             )}
             <TableRow>
+              {enableSelection && (
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={data.length > 0 && selectedIds.length === data.length}
+                    onCheckedChange={handleSelectAll}
+                  />
+                </TableHead>
+              )}
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
@@ -348,6 +381,14 @@ export function DataTable<T extends { id: string }>({
                   onClick={() => onRowClick?.(item)}
                   className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
                 >
+                  {enableSelection && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.includes(item.id)}
+                        onCheckedChange={(checked) => handleSelectRow(item.id, checked as boolean)}
+                      />
+                    </TableCell>
+                  )}
                   {columns.map((col) => (
                     <TableCell key={col.key}>
                       {col.render

@@ -4,10 +4,10 @@ import { GlobalSearch } from "./GlobalSearch";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Settings } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Outlet } from "react-router-dom";
 
 interface AppLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -32,7 +32,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </Button>
           </header>
           <div className="flex-1 p-2 md:p-6 overflow-auto">
-            {children}
+            {children || <Outlet />}
           </div>
         </main>
       </div>

@@ -73,6 +73,7 @@ export async function getJournalEntries(filters?: {
   startDate?: string;
   endDate?: string;
   referenceType?: string;
+  referenceId?: string;
 }) {
   let query = supabase
     .from('journal_entries')
@@ -83,6 +84,7 @@ export async function getJournalEntries(filters?: {
         chart_of_accounts(code, name, account_type)
       )
     `)
+    .order('created_at', { ascending: false })
     .order('entry_date', { ascending: false });
 
   if (filters?.startDate) {
@@ -93,6 +95,9 @@ export async function getJournalEntries(filters?: {
   }
   if (filters?.referenceType) {
     query = query.eq('reference_type', filters.referenceType);
+  }
+  if (filters?.referenceId) {
+    query = query.eq('reference_id', filters.referenceId);
   }
 
   const { data, error } = await query;
@@ -302,17 +307,21 @@ export async function closeAccountingPeriod(periodId: string): Promise<Accountin
 }
 
 export async function reopenAccountingPeriod(periodId: string, password: string): Promise<AccountingPeriod> {
-  // Verify admin password
-  const { data: settings, error: settingsError } = await supabase
-    .from('app_settings')
-    .select('setting_value')
-    .eq('setting_key', 'admin_password')
-    .single();
+  // Get current user email
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-  if (settingsError) throw new Error('Gagal verifikasi password');
+  if (userError || !user?.email) {
+    throw new Error('User tidak terautentikasi');
+  }
 
-  if (settings.setting_value !== password) {
-    throw new Error('Password admin salah');
+  // Verify user password by attempting sign in
+  const { error: authError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: password,
+  });
+
+  if (authError) {
+    throw new Error('Password login salah');
   }
 
   // Reopen the period
@@ -321,7 +330,7 @@ export async function reopenAccountingPeriod(periodId: string, password: string)
     .update({
       status: 'open',
       closed_at: null,
-      notes: `Dibuka kembali pada ${new Date().toLocaleString('id-ID')}`,
+      notes: `Dibuka kembali oleh ${user.email} pada ${new Date().toLocaleString('id-ID')}`,
     })
     .eq('id', periodId)
     .select()

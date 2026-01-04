@@ -46,14 +46,18 @@ export function StockTable() {
 
   const columns = [
     { key: "sku_variant", header: "SKU Variant", primary: true },
-    { key: "stock_qty", header: "Current Stock" },
-    { key: "min_stock_alert", header: "Min Stock", hideOnMobile: true },
-    {
-      key: "hpp",
-      header: "HPP",
-      hideOnMobile: true,
-      render: (item: any) => `Rp ${item.hpp.toLocaleString()}`,
-    },
+    { key: "initial_stock", header: "Initial", hideOnMobile: true },
+    { key: "stock_in", header: "In", hideOnMobile: true },
+    { key: "stock_out", header: "Out", hideOnMobile: true },
+    { key: "stock_qty", header: "Physical" },
+    { key: "available_qty", header: "Available" },
+    // hpp removed
+    // {
+    //   key: "hpp",
+    //   header: "HPP",
+    //   hideOnMobile: true,
+    //   render: (item: any) => `Rp ${item.hpp.toLocaleString()}`,
+    // },
     {
       key: "status",
       header: "Status",
@@ -97,22 +101,22 @@ export function StockTable() {
         <div>
           <p className="font-medium">{item.sku_variant}</p>
           <p className="text-sm text-muted-foreground">
-            HPP: Rp {item.hpp.toLocaleString()}
+            {/* HPP Removed */}
           </p>
         </div>
         <span
-          className={`text-sm font-medium ${
-            item.stock_qty <= item.min_stock_alert
-              ? "text-destructive"
-              : "text-green-600"
-          }`}
+          className={`text-sm font-medium ${item.stock_qty <= item.min_stock_alert
+            ? "text-destructive"
+            : "text-green-600"
+            }`}
         >
           {item.stock_qty <= item.min_stock_alert ? "Low Stock" : "OK"}
         </span>
       </div>
       <div className="flex items-center justify-between">
         <div className="flex gap-4 text-sm">
-          <span>Stock: <strong>{item.stock_qty}</strong></span>
+          <span>Phys: <strong>{item.stock_qty}</strong></span>
+          <span>Avail: <strong>{item.available_qty}</strong></span>
           <span className="text-muted-foreground">Min: {item.min_stock_alert}</span>
         </div>
         <Button

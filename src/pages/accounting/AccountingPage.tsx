@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ChartOfAccounts } from "./ChartOfAccounts";
 import { JournalEntries } from "./JournalEntries";
@@ -9,7 +10,12 @@ import { BalanceSheet } from "./BalanceSheet";
 import { AccountingPeriods } from "./AccountingPeriods";
 
 export default function AccountingPage() {
-  const [activeTab, setActiveTab] = useState("periods");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "periods";
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab });
+  };
 
   return (
     <div>

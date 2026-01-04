@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
-  getPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase,
-  addPurchaseLine, updatePurchaseLine, deletePurchaseLine, receivePurchaseLines,
-  generatePurchaseNo
+import {
+  getPurchases, getPurchase, createPurchase, updatePurchase, deletePurchase, confirmPurchase,
+  addPurchaseLine, updatePurchaseLine, deletePurchaseLine, receivePurchaseLines
 } from '@/lib/api/purchases';
 import type { Purchase, PurchaseOrderLine } from '@/types';
 import { toast } from 'sonner';
@@ -22,12 +21,8 @@ export function usePurchase(id: string) {
   });
 }
 
-export function useGeneratePurchaseNo() {
-  return useQuery({
-    queryKey: ['purchases', 'next-no'],
-    queryFn: generatePurchaseNo,
-  });
-}
+// Note: Purchase number generation is now handled by database trigger
+// See: supabase/migrations/20260102_refactor_po_logic.sql
 
 export function useCreatePurchase() {
   const queryClient = useQueryClient();
@@ -74,6 +69,22 @@ export function useDeletePurchase() {
     },
   });
 }
+
+export function useConfirmPurchase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: confirmPurchase,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      toast.success('Purchase order confirmed');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to confirm purchase: ${error.message}`);
+    },
+  });
+}
+
 
 // Purchase Lines
 export function useAddPurchaseLine() {
@@ -127,8 +138,9 @@ export function useReceivePurchaseLines() {
   return useMutation({
     mutationFn: ({ purchaseId, receivedQtys }: { purchaseId: string; receivedQtys: Record<string, number> }) =>
       receivePurchaseLines(purchaseId, receivedQtys),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases', variables.purchaseId] }); // Explicit refresh for Detail Page
       queryClient.invalidateQueries({ queryKey: ['variants'] });
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
       toast.success('Goods received successfully');

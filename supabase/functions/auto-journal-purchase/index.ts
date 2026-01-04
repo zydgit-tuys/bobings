@@ -15,9 +15,10 @@ const SETTING_KEYS = {
 
 interface PurchaseJournalRequest {
   purchaseId: string;
-  paymentType: 'cash' | 'bank' | 'hutang';
+  operationType: 'receive' | 'payment';  // Distinguish between goods receipt and payment
+  paymentType?: 'cash' | 'bank';  // Required for 'payment' operation, removed 'hutang'
   bankAccountId?: string; // Optional: specific bank account ID
-  amount?: number;
+  amount?: number;  // Optional for partial payments
 }
 
 // Helper function to get account mapping from settings
@@ -56,6 +57,12 @@ async function getBankAccount(supabase: any, bankAccountId?: string): Promise<{ 
     return null;
   }
 
+  // Ensure account_id exists (linked to Chart of Accounts)
+  if (!data.account_id) {
+    console.log(`Bank account ${data.id} found but no account_id linked`);
+    return null;
+  }
+
   return { accountId: data.account_id, bankName: data.bank_name };
 }
 
@@ -71,29 +78,91 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { purchaseId, paymentType, bankAccountId, amount } = await req.json() as PurchaseJournalRequest;
+    // Check accounting period status
+    const { data: periodStatus, error: periodError } = await supabase
+      .rpc('get_current_period_status')
+      .single();
 
-    if (!purchaseId || !paymentType) {
+    if (periodError) {
+      console.error('Error checking period status:', periodError);
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing purchaseId or paymentType' }),
+        JSON.stringify({ success: false, error: 'Unable to verify accounting period status' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!periodStatus.is_open) {
+      console.error('Period not open:', periodStatus.message);
+      return new Response(
+        JSON.stringify({ success: false, error: periodStatus.message }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Fetch account mappings from settings
-    const [kasAccountId, persediaanAccountId, hutangAccountId] = await Promise.all([
+    const { purchaseId, operationType, paymentType, bankAccountId, amount } = await req.json() as PurchaseJournalRequest;
+
+    if (!purchaseId || !operationType) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing purchaseId or operationType' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (operationType === 'payment' && !paymentType) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'paymentType required for payment operation' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 3. V2 MAPPING LOOKUP (Priority)
+    const getAccountFromV2 = async (
+      eventType: string,
+      context: string | null,
+      side: 'debit' | 'credit'
+    ): Promise<string | null> => {
+      let query = supabase
+        .from('journal_account_mappings')
+        .select('account_id, priority')
+        .eq('event_type', eventType)
+        .eq('side', side)
+        .eq('is_active', true);
+
+      if (context) {
+        query = query.or(`event_context.eq.${context},event_context.is.null`);
+      } else {
+        query = query.is('event_context', null);
+      }
+
+      const { data, error } = await query.order('priority', { ascending: false }).limit(1).maybeSingle();
+      if (error) console.error("V2 Mapping Error:", error);
+      return data?.account_id || null;
+    };
+
+    // Fetch account mappings from V1 settings (Fallback)
+    const [kasAccountId, setPersediaanId, setHutangId] = await Promise.all([
       getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_KAS),
       getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_PERSEDIAAN),
       getAccountMapping(supabase, SETTING_KEYS.ACCOUNT_HUTANG_SUPPLIER),
     ]);
 
-    // Validate required accounts exist
+    // Resolve Critical Accounts
+    // Inventory (Debit side of confirm_purchase)
+    const v2Persediaan = await getAccountFromV2('confirm_purchase', null, 'debit');
+    const persediaanAccountId = v2Persediaan || setPersediaanId;
+
+    // AP (Credit side of confirm_purchase)
+    const v2Hutang = await getAccountFromV2('confirm_purchase', null, 'credit');
+    const hutangAccountId = v2Hutang || setHutangId;
+
+    // Validate required accounts exist (Fail-Fast)
     if (!persediaanAccountId) {
-      console.error('❌ Persediaan account not configured in settings');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Akun Persediaan belum dikonfigurasi di Settings' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('❌ Missing Persediaan Account (V2 or V1)');
+      throw new Error('Konfigurasi Akun Persediaan tidak ditemukan (Cek Mapping V2 atau Settings V1)');
+    }
+    if (!hutangAccountId) {
+      console.error('❌ Missing Hutang Account (V2 or V1)');
+      throw new Error('Konfigurasi Akun Hutang Supplier tidak ditemukan (Cek Mapping V2 atau Settings V1)');
     }
 
     // Fetch purchase with supplier info
@@ -116,17 +185,81 @@ serve(async (req) => {
 
     const supplier = purchase.suppliers as unknown as { name: string; code: string } | null;
     const supplierName = supplier?.name || 'Unknown Supplier';
-    const journalAmount = amount || purchase.total_amount;
 
-    console.log(`📦 Processing ${paymentType} payment for purchase: ${purchase.purchase_no}`);
+    // supplierName declaration removed (it was duplicate)
 
-    // Determine credit account based on payment type
-    let creditAccountId: string;
-    let creditAccountName: string;
+    console.log(`📦 Processing ${operationType} operation for purchase: ${purchase.purchase_no}`);
+
+    // IDEMPOTENCY CHECK (Rule #5)
+    // Check if ALREADY received fully AND no incremental amount is being processed
+    // IF we are processing an incremental amount (amount is set), we bypass this check (Double Journal prevented by incremental amount logic)
+    const isIncremental = amount !== undefined && amount > 0;
+
+    if (!isIncremental && (purchase.status === 'received' || purchase.status === 'completed')) {
+      console.log("⚠️ Purchase already received. Idempotency triggered.");
+      return new Response(
+        JSON.stringify({ success: true, message: 'Already received', journalEntryId: null }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Variables to be set based on operation type
+    let journalAmount: number;
     let journalDescription: string;
+    let journalLines: any[];
 
-    switch (paymentType) {
-      case 'cash':
+    if (operationType === 'receive') {
+      // ============================================
+      // GOODS RECEIPT: Debit Persediaan, Credit Hutang Supplier
+      // ============================================
+      if (!hutangAccountId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      journalAmount = amount || purchase.total_amount; // Use provided partial amount, or full fallback
+      const isPartialReceipt = amount && amount < purchase.total_amount;
+      journalDescription = `Penerimaan barang dari ${supplierName} - ${purchase.purchase_no} ${isPartialReceipt ? '(Partial)' : ''}`;
+
+      journalLines = [
+        // Debit: Persediaan (inventory increases)
+        {
+          account_id: persediaanAccountId,
+          debit: journalAmount,
+          credit: 0,
+          description: `Persediaan - ${purchase.purchase_no}`,
+        },
+        // Credit: Hutang Supplier (liability increases)
+        {
+          account_id: hutangAccountId,
+          debit: 0,
+          credit: journalAmount,
+          description: `Hutang Supplier - ${purchase.purchase_no}`,
+        },
+      ];
+
+      console.log(`✅ Goods Receipt: Debit Persediaan, Credit Hutang Supplier = Rp ${journalAmount.toLocaleString()}`);
+
+    } else if (operationType === 'payment') {
+      // ============================================
+      // PAYMENT: Debit Hutang Supplier, Credit Kas/Bank
+      // ============================================
+      if (!hutangAccountId) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      journalAmount = amount || purchase.total_amount;
+
+      // Determine credit account (Kas or Bank)
+      let creditAccountId: string;
+      let creditAccountName: string;
+
+      if (paymentType === 'cash') {
         if (!kasAccountId) {
           return new Response(
             JSON.stringify({ success: false, error: 'Akun Kas belum dikonfigurasi di Settings' }),
@@ -135,10 +268,7 @@ serve(async (req) => {
         }
         creditAccountId = kasAccountId;
         creditAccountName = 'Kas';
-        journalDescription = `Pembelian tunai dari ${supplierName} - ${purchase.purchase_no}`;
-        break;
-
-      case 'bank':
+      } else if (paymentType === 'bank') {
         // Try to get bank account from bank_accounts table first
         const bankAccount = await getBankAccount(supabase, bankAccountId);
         if (bankAccount) {
@@ -156,26 +286,45 @@ serve(async (req) => {
           creditAccountId = settingsBankId;
           creditAccountName = 'Bank';
         }
-        journalDescription = `Pembelian transfer dari ${supplierName} - ${purchase.purchase_no}`;
-        break;
-
-      case 'hutang':
-        if (!hutangAccountId) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        creditAccountId = hutangAccountId;
-        creditAccountName = 'Hutang Supplier';
-        journalDescription = `Pembelian kredit dari ${supplierName} - ${purchase.purchase_no}`;
-        break;
-
-      default:
+      } else {
         return new Response(
-          JSON.stringify({ success: false, error: 'Invalid payment type' }),
+          JSON.stringify({ success: false, error: 'Invalid paymentType. Must be "cash" or "bank".' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      // Determine if partial or full payment
+      const isPartial = amount && amount < purchase.total_amount;
+      const paymentLabel = isPartial
+        ? `Parsial: Rp ${amount!.toLocaleString()} dari Rp ${purchase.total_amount.toLocaleString()}`
+        : `Lunas: Rp ${journalAmount.toLocaleString()}`;
+
+      journalDescription = `Pembayaran ${paymentType === 'cash' ? 'tunai' : 'transfer'} ke ${supplierName} - ${purchase.purchase_no} (${paymentLabel})`;
+
+      journalLines = [
+        // Debit: Hutang Supplier (liability decreases)
+        {
+          account_id: hutangAccountId,
+          debit: journalAmount,
+          credit: 0,
+          description: `Hutang Supplier - ${purchase.purchase_no}`,
+        },
+        // Credit: Kas/Bank (asset decreases)
+        {
+          account_id: creditAccountId,
+          debit: 0,
+          credit: journalAmount,
+          description: `${creditAccountName} - ${purchase.purchase_no}`,
+        },
+      ];
+
+      console.log(`✅ Payment: Debit Hutang Supplier, Credit ${creditAccountName} = Rp ${journalAmount.toLocaleString()} ${isPartial ? '(Partial)' : '(Full)'}`);
+
+    } else {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid operationType. Must be "receive" or "payment".' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Create journal entry
@@ -195,43 +344,75 @@ serve(async (req) => {
       throw new Error(`Failed to create journal entry: ${entryError.message}`);
     }
 
-    const journalLines = [
-      // Debit: Persediaan (inventory increases)
-      {
-        entry_id: journalEntry.id,
-        account_id: persediaanAccountId,
-        debit: journalAmount,
-        credit: 0,
-        description: `Penambahan persediaan - ${purchase.purchase_no}`,
-      },
-      // Credit: Kas / Bank / Hutang (based on payment type)
-      {
-        entry_id: journalEntry.id,
-        account_id: creditAccountId,
-        debit: 0,
-        credit: journalAmount,
-        description: `${creditAccountName} - ${purchase.purchase_no}`,
-      },
-    ];
+    // Add entry_id to each line
+    const journalLinesWithEntry = journalLines.map(line => ({
+      ...line,
+      entry_id: journalEntry.id,
+    }));
 
     // Insert journal lines
     const { error: linesError } = await supabase
       .from('journal_lines')
-      .insert(journalLines);
+      .insert(journalLinesWithEntry);
 
     if (linesError) {
       console.error('❌ Error creating journal lines:', linesError);
       throw new Error(`Failed to create journal lines: ${linesError.message}`);
     }
 
-    console.log(`✅ Created journal: Debit Persediaan, Credit ${creditAccountName} = Rp ${journalAmount.toLocaleString()}`);
+    // ============================================
+    // CHECK FOR PO COMPLETION
+    // ============================================
+    // If we just made a payment, check if liability is fully paid off
+    if (operationType === 'payment') {
+      // Fetch all journals for this PO to calculate balance
+      const { data: allJournals, error: fetchJwtError } = await supabase
+        .from('journal_entries')
+        .select(`
+          journal_lines (account_id, debit, credit)
+        `)
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', purchaseId);
+
+      if (!fetchJwtError && allJournals) {
+        let liabilityBalance = 0;
+        allJournals.forEach((j: any) => {
+          j.journal_lines?.forEach((l: any) => {
+            if (l.account_id === hutangAccountId) {
+              liabilityBalance += (l.credit - l.debit);
+            }
+          });
+        });
+
+        // Use a small epsilon for float comparison vs zero
+        const isFullyPaid = liabilityBalance <= 100; // tolerance for small diffs due to rounding
+
+        console.log(`💰 Liability Balance check: Rp ${liabilityBalance.toLocaleString()} -> Fully Paid? ${isFullyPaid}`);
+
+        if (isFullyPaid && (purchase.status === 'received' || purchase.status === 'partial')) {
+          console.log(`✅ PO ${purchase.purchase_no} is fully paid and received. Updating status to 'completed'...`);
+
+          const { error: updateError } = await supabase
+            .from('purchases')
+            .update({ status: 'completed' })
+            .eq('id', purchaseId);
+
+          if (updateError) {
+            console.error('⚠️ Failed to auto-update status to completed:', updateError);
+            // Don't throw here, as the main operation (journal) succeeded
+          }
+        }
+      }
+    }
+
     console.log(`🎉 Auto journal completed for purchase ${purchase.purchase_no}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         journalEntryId: journalEntry.id,
-        paymentType,
+        operationType,
+        paymentType: operationType === 'payment' ? paymentType : null,
         purchaseNo: purchase.purchase_no,
         amount: journalAmount,
         journalDescription,

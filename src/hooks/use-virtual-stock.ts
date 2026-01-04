@@ -3,7 +3,8 @@ import {
   getVirtualStockProducts,
   updateProductsSortOrder,
   updateVariantVirtualQty,
-  toggleProductVirtualStock
+  toggleProductVirtualStock,
+  getLocalVirtualStock
 } from '@/lib/api/virtual-stock';
 import { getAttributeValues } from '@/lib/api/products';
 import { toast } from 'sonner';
@@ -17,6 +18,9 @@ export function useVirtualStockProducts() {
         getAttributeValues()
       ]);
 
+      // Get local qty
+      const localQty = getLocalVirtualStock();
+
       // Map attribute values to variants
       const attrMap = new Map(attributeValues.map(av => [av.id, av.value]));
 
@@ -24,6 +28,7 @@ export function useVirtualStockProducts() {
         ...product,
         variants: product.variants.map((v: any) => ({
           ...v,
+          virtual_stock_qty: localQty[v.id] || 0, // Merge from local storage
           size_name: v.size_value_id ? attrMap.get(v.size_value_id) : null,
           color_name: v.color_value_id ? attrMap.get(v.color_value_id) : null
         }))
