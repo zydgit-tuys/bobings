@@ -43,7 +43,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useProducts } from "@/hooks/use-products";
 import { useCustomers } from "@/hooks/use-customers";
-import { useCustomerTypePricing } from "@/hooks/use-customer-pricing";
 import { useCreateSalesOrder, useUpdateSalesOrder } from "@/hooks/use-sales";
 import { SalesReturnDialog } from "./SalesReturnDialog";
 
@@ -146,7 +145,8 @@ export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrder
     product.product_variants?.map((variant: any) => ({
       id: variant.id,
       label: `${product.name} - ${variant.sku_variant}`,
-      price: variant.price,
+      hargaJualUmum: variant.harga_jual_umum || 0,
+      hargaKhusus: variant.harga_khusus || 0,
       stock: variant.stock_qty || 0,
       productName: product.name,
       sku: variant.sku_variant,
@@ -160,28 +160,20 @@ export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrder
   // Pricing Logic - Watch Customer
   const selectedCustomerId = form.watch("customer_id");
   const activeCustomer = customers?.find(c => c.id === selectedCustomerId);
-  const { data: pricingRules } = useCustomerTypePricing(activeCustomer?.customer_type_id);
 
   const handleVariantChange = (index: number, variantId: string) => {
     const variant = variantOptions.find((v) => v.id === variantId);
     if (variant) {
-      let finalPrice = variant.price;
-      let isSpecialPrice = false;
-
-      // Check Customer Type Pricing (Special Price)
-      if (pricingRules) {
-        const specificRule = pricingRules.find(r => r.variant_id === variantId);
-        if (specificRule) {
-          finalPrice = specificRule.price;
-          isSpecialPrice = true;
-        }
-      }
+      // Simple Pricing: Use customer type to determine price
+      const customerType = activeCustomer?.customer_type || 'umum';
+      const finalPrice = customerType === 'khusus' ? variant.hargaKhusus : variant.hargaJualUmum;
+      const isSpecialPrice = customerType === 'khusus';
 
       form.setValue(`items.${index}.unit_price`, finalPrice);
 
       // Auto-fill HPP (Frozen at time of sale)
-      // Logic: Use product.base_hpp as default
-      const defaultHpp = variant.baseHpp;
+      // Logic: Use product.base_hpp as default, 0 for service items
+      const defaultHpp = variant.productType === 'service' ? 0 : variant.baseHpp;
       form.setValue(`items.${index}.hpp`, defaultHpp);
 
       if (isSpecialPrice) {
@@ -519,7 +511,9 @@ export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrder
                                         </div>
                                         <div className="flex items-center gap-3 shrink-0">
                                           <div className="text-right">
-                                            <div className="text-xs font-medium">Rp {variant.price.toLocaleString()}</div>
+                                            <div className="text-xs font-medium">
+                                              Rp {(activeCustomer?.customer_type === 'khusus' ? variant.hargaKhusus : variant.hargaJualUmum).toLocaleString()}
+                                            </div>
                                             <div className={cn(
                                               "text-[10px]",
                                               variant.stock > 10 ? "text-emerald-600" : variant.stock > 0 ? "text-orange-600" : "text-destructive"
