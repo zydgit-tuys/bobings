@@ -27,7 +27,7 @@ serve(async (req: Request) => {
             .select(`
         qty,
         unit_price,
-        sales_order_lines:sales_order_line_id (
+        order_items:sales_order_line_id (
           hpp
         )
       `)
@@ -41,7 +41,7 @@ serve(async (req: Request) => {
         lines.forEach((line: any) => {
             totalRefund += Number(line.qty) * Number(line.unit_price);
             // HPP is from the ORIGINAL sales order line (cost at time of sale)
-            totalHpp += Number(line.qty) * Number(line.sales_order_lines?.hpp || 0);
+            totalHpp += Number(line.qty) * Number(line.order_items?.hpp || 0);
         });
 
         console.log("Financials:", { totalRefund, totalHpp });
@@ -126,74 +126,43 @@ serve(async (req: Request) => {
             .in('setting_key', [
                 'account_retur_penjualan', // Debit
                 'account_piutang',         // Credit (Online)
-                'account_kas',             // Credit (Offline)
+                'account_kas',             // Credit (Offline) - No longer used directly for credit side
                 'account_persediaan',      // Debit
                 'account_hpp'             // Credit
             ]);
 
         const getSetting = (key: string) => settings?.find(s => s.setting_key === key)?.setting_value;
 
-        let accReturPenjualan, accPiutang, accKas, accPersediaan, accHpp;
+        let accReturPenjualan, accPiutang, accPersediaan, accHpp;
 
-        if (isCreditNote) {
-            // FOR CREDIT NOTE:
-            // Mapping Logic:
-            // Debit: Revenue Account (Reversal) -> We look for the Revenue account (normally Credit side) and debit it.
-            // Credit: AR Account (Reversal) -> We look for the AR account (normally Debit side) and credit it.
+        // RESOLVE ACCOUNTS
+        // We always credit "Account Receivable" (Piutang) to reduce customer debt or create a credit balance.
+        // Even for offline cash sales, a return effectively creates a "Store Credit" until refunded.
 
-            // 1. Revenue (Debit side of CN)
-            // Try to find the account that is normally CREDITED for this channel (e.g., 4101 Revenue Shopee)
-            accReturPenjualan = await getAccountFromV2('credit_note', eventContext, 'credit', mplCode)
-                || await getAccountFromV2('confirm_sales_order', eventContext, 'credit', mplCode) // Fallback to sales mapping
-                || getSetting('account_retur_penjualan'); // Last fallback
+        accReturPenjualan = await getAccountFromV2(isCreditNote ? 'credit_note' : 'sales_return', eventContext, 'debit', mplCode)
+            || getSetting('account_retur_penjualan');
 
-            // 2. AR (Credit side of CN)
-            // Try to find the account that is normally DEBITED for this channel (e.g., 1102 AR Shopee)
-            accPiutang = await getAccountFromV2('credit_note', eventContext, 'debit', mplCode)
-                || await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) // Fallback to sales mapping
-                || getSetting('account_piutang');
+        accPiutang = await getAccountFromV2(isCreditNote ? 'credit_note' : 'sales_return', eventContext, 'credit', mplCode)
+            || await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) // Fallback to standard AR
+            || getSetting('account_piutang');
 
-        } else {
-            // STANDARD RETURN (Sales Return)
-            // Debit: Sales Return (Contra Revenue) OR Revenue directly.
-            // Credit: AR
-
-            // Note: If using distinct 'sales_return' event, use that. 
-            // If not, fallback to 'account_retur_penjualan' setting for the Debit side.
-
-            accReturPenjualan = await getAccountFromV2('sales_return', eventContext, 'debit', mplCode)
-                || getSetting('account_retur_penjualan');
-
-            accPiutang = await getAccountFromV2('sales_return', eventContext, 'credit', mplCode)
-                || await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) // Fallback to standard AR
-                || getSetting('account_piutang');
-        }
-
-        accKas = isOffline ? (getSetting('account_kas') || '1101') : null;
-
-        // Inventory accounts only needed if NOT credit note
         if (!isCreditNote) {
-            accPersediaan = await getAccountFromV2('sales_return', eventContext, 'debit', mplCode) // Wait, inv is separate event? usually just settings for simple return
+            accPersediaan = await getAccountFromV2('sales_return', eventContext, 'debit', mplCode)
                 || getSetting('account_persediaan');
-
-            accHpp = await getAccountFromV2('sales_return', eventContext, 'credit', mplCode) // HPP reversal
+            accHpp = await getAccountFromV2('sales_return', eventContext, 'credit', mplCode)
                 || getSetting('account_hpp');
         }
 
         // Validate accounts
         if (!accReturPenjualan) throw new Error("Missing Account: Retur Penjualan (Revenue)");
-        if (!isOffline && !accPiutang) throw new Error("Missing Account: Piutang");
-        if (isOffline && !accKas) throw new Error("Missing Account: Kas");
+        if (!accPiutang) throw new Error("Missing Account: Piutang (AR)");
 
         if (!isCreditNote) {
             if (!accPersediaan) throw new Error("Missing Account: Persediaan");
             if (!accHpp) throw new Error("Missing Account: HPP");
         }
 
-        // Determine Credit Account (Cash vs Receivable)
-        const creditAccount = isOffline ? accKas : accPiutang;
         const noteLabel = isCreditNote ? 'Credit Note' : 'Retur Penjualan';
-        const creditDesc = isOffline ? `Refund Tunai (${noteLabel}) ${record.return_no}` : `Pengurangan Piutang (${noteLabel}) ${record.return_no}`;
         const journalDesc = `${noteLabel} ${record.return_no} ex ${orderNo} (${marketplace})`;
 
         // 4. Create Journal Entry
@@ -215,7 +184,8 @@ serve(async (req: Request) => {
 
         // 5. Create Journal Lines
         const journalLines = [
-            // A. Financial Reversal (Reduce Revenue)
+            // A. Financial Reversal
+            // Debit Revenue (Retur Penjualan)
             {
                 entry_id: journal.id,
                 account_id: accReturPenjualan,
@@ -223,13 +193,13 @@ serve(async (req: Request) => {
                 credit: 0,
                 description: `${noteLabel} ${record.return_no}`
             },
-            // Reduce Asset (Cash) or Receivable (Piutang)
+            // Credit AR (Piutang) - Reduces Debt or Creates Credit
             {
                 entry_id: journal.id,
-                account_id: creditAccount,
+                account_id: accPiutang,
                 debit: 0,
                 credit: totalRefund,
-                description: creditDesc
+                description: `Pengurang Piutang (${noteLabel}) ${record.return_no}`
             }
         ];
 
