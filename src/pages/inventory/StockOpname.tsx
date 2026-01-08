@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, ClipboardCheck, Trash2, CheckCircle } from 'lucide-react';
+import { Check, ChevronsUpDown, Plus, ClipboardCheck, Trash2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -38,6 +38,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useStockOpnames, useCreateStockOpname, useConfirmStockOpname } from '@/hooks/use-stock-opname';
 import { formatCurrency } from '@/lib/utils';
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const opnameSchema = z.object({
     opname_date: z.string().min(1, 'Tanggal wajib diisi'),
@@ -55,6 +70,14 @@ interface OpnameLine {
     physical_qty: number;
     unit_cost: number;
     notes?: string;
+}
+
+interface VariantOption {
+    id: string;
+    sku: string;
+    name: string;
+    system_qty: number;
+    last_unit_cost: number;
 }
 
 export default function StockOpnamePage() {
@@ -190,6 +213,9 @@ export default function StockOpnamePage() {
 function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const [lines, setLines] = useState<OpnameLine[]>([]);
     const [selectedVariantId, setSelectedVariantId] = useState('');
+    const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
+    const [variantSearchOpen, setVariantSearchOpen] = useState(false);
+    const [isLoadingVariants, setIsLoadingVariants] = useState(false);
 
     const form = useForm<OpnameFormData>({
         resolver: zodResolver(opnameSchema),
@@ -202,8 +228,70 @@ function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
     const createOpname = useCreateStockOpname();
 
+    useEffect(() => {
+        if (!open) return;
+
+        const loadVariants = async () => {
+            setIsLoadingVariants(true);
+            try {
+                const { data: variants, error } = await supabase
+                    .from('product_variants')
+                    .select('id, sku_variant, stock_qty, products(name)')
+                    .eq('is_active', true)
+                    .order('sku_variant');
+
+                if (error) throw error;
+
+                const variantIds = (variants || []).map((variant) => variant.id);
+                const { data: costs, error: costError } = await supabase
+                    .from('v_inventory_costs')
+                    .select('variant_id, last_unit_cost, weighted_avg_cost')
+                    .in('variant_id', variantIds);
+
+                if (costError) throw costError;
+
+                const costMap = new Map(
+                    (costs || []).map((cost) => [
+                        cost.variant_id,
+                        cost,
+                    ])
+                );
+
+                const options = (variants || []).map((variant: any) => {
+                    const product = Array.isArray(variant.products) ? variant.products[0] : variant.products;
+                    const costSnapshot = costMap.get(variant.id);
+                    const unitCost = Number(
+                        costSnapshot?.last_unit_cost ?? costSnapshot?.weighted_avg_cost ?? 0
+                    );
+
+                    return {
+                        id: variant.id,
+                        sku: variant.sku_variant,
+                        name: product?.name || 'Unknown Product',
+                        system_qty: Number(variant.stock_qty || 0),
+                        last_unit_cost: unitCost,
+                    };
+                });
+
+                setVariantOptions(options);
+            } catch (error: any) {
+                console.error('Failed to load variants', error);
+                toast.error(`Gagal memuat varian: ${error.message}`);
+            } finally {
+                setIsLoadingVariants(false);
+            }
+        };
+
+        loadVariants();
+    }, [open]);
+
+    const selectedVariant = useMemo(
+        () => variantOptions.find((variant) => variant.id === selectedVariantId),
+        [variantOptions, selectedVariantId]
+    );
+
     const handleAddLine = () => {
-        if (!selectedVariantId) return;
+        if (!selectedVariantId || !selectedVariant) return;
 
         // Check if already added
         if (lines.find(l => l.variant_id === selectedVariantId)) {
@@ -211,15 +299,13 @@ function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             return;
         }
 
-        // Simplified: User enters variant ID manually
-        // TODO: Replace with searchable dropdown that fetches variant details
         const newLine: OpnameLine = {
             variant_id: selectedVariantId,
-            variant_name: 'Product Name - Variant', // TODO: Fetch from API
-            sku: selectedVariantId, // Temporary
-            system_qty: 0, // TODO: Fetch current stock from API
+            variant_name: `${selectedVariant.name} - ${selectedVariant.sku}`,
+            sku: selectedVariant.sku,
+            system_qty: selectedVariant.system_qty,
             physical_qty: 0,
-            unit_cost: 0,
+            unit_cost: selectedVariant.last_unit_cost,
             notes: '',
         };
 
@@ -247,9 +333,24 @@ function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChang
         return sum + (diff < 0 ? Math.abs(diff) * line.unit_cost : 0);
     }, 0);
 
+    const hasInvalidLines = useMemo(() => (
+        lines.some(line =>
+            !line.variant_id ||
+            Number.isNaN(line.physical_qty) ||
+            line.physical_qty < 0 ||
+            Number.isNaN(line.unit_cost) ||
+            line.unit_cost < 0
+        )
+    ), [lines]);
+
     const onSubmit = async (data: OpnameFormData) => {
         if (lines.length === 0) {
-            alert('Please add at least one line item');
+            toast.error('Tambahkan minimal 1 item opname');
+            return;
+        }
+
+        if (hasInvalidLines) {
+            toast.error('Lengkapi qty fisik dan unit cost yang valid');
             return;
         }
 
@@ -329,12 +430,53 @@ function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChang
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Add Product</label>
                             <div className="flex gap-2">
-                                <Input
-                                    value={selectedVariantId}
-                                    onChange={(e) => setSelectedVariantId(e.target.value)}
-                                    placeholder="Enter variant ID"
-                                    className="flex-1"
-                                />
+                                <Popover open={variantSearchOpen} onOpenChange={setVariantSearchOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            role="combobox"
+                                            className="flex-1 justify-between"
+                                            disabled={isLoadingVariants}
+                                        >
+                                            {selectedVariant
+                                                ? `${selectedVariant.name} - ${selectedVariant.sku}`
+                                                : 'Pilih varian'}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[420px] p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Cari produk / SKU..." />
+                                            <CommandEmpty>Varian tidak ditemukan.</CommandEmpty>
+                                            <CommandList>
+                                                <CommandGroup>
+                                                    {variantOptions.map((variant) => (
+                                                        <CommandItem
+                                                            key={variant.id}
+                                                            value={`${variant.name} ${variant.sku}`}
+                                                            onSelect={() => {
+                                                                setSelectedVariantId(variant.id);
+                                                                setVariantSearchOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={`mr-2 h-4 w-4 ${selectedVariantId === variant.id ? 'opacity-100' : 'opacity-0'
+                                                                    }`}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-sm">{variant.name}</span>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {variant.sku} • Stok: {variant.system_qty}
+                                                                </span>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
                                 <Button type="button" onClick={handleAddLine}>
                                     <Plus className="h-4 w-4 mr-1" />
                                     Add
@@ -436,7 +578,10 @@ function CreateOpnameDialog({ open, onOpenChange }: { open: boolean; onOpenChang
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={createOpname.isPending || lines.length === 0}>
+                            <Button
+                                type="submit"
+                                disabled={createOpname.isPending || lines.length === 0 || hasInvalidLines}
+                            >
                                 {createOpname.isPending ? 'Creating...' : 'Create Opname'}
                             </Button>
                         </div>

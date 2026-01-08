@@ -4,11 +4,11 @@ import {
   getInventoryAlerts, getInventoryValuation,
   calculateOptimalStock, applyOptimalStock,
   triggerAutoJournalStock,
+  getLastUnitCost,
   type OptimalStockParams, type ApplyStockParams
 } from '@/lib/api/inventory';
 import type { MovementType } from '@/types';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 
 export function useStockMovements(variantId?: string, limit = 100) {
   return useQuery({
@@ -45,37 +45,26 @@ export function useAdjustStock() {
       queryClient.invalidateQueries({ queryKey: ['inventory-alerts'] });
 
       try {
-        // Fetch variant to get HPP for journaling
-        const { data: variant, error: variantError } = await supabase
-          .from('product_variants')
-          .select('products(base_hpp)')
-          .eq('id', variables.variantId)
-          .single();
+        const unitCost = await getLastUnitCost(variables.variantId);
 
-        if (variantError || !variant) {
-          throw new Error('Failed to fetch variant HPP');
-        }
-
-        const product = Array.isArray(variant.products) ? variant.products[0] : variant.products;
-        const hpp = product?.base_hpp || 0;
-
-        if (hpp === 0) {
-          throw new Error('HPP is 0, cannot create journal entry');
+        if (unitCost === 0) {
+          throw new Error('Unit cost is 0, cannot create journal entry');
         }
 
         await triggerAutoJournalStock(
           variables.variantId,
           variables.qty,
-          hpp,
+          unitCost,
           variables.notes || 'Stock adjustment'
         );
         toast.success('Stock updated & Journal entry created');
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
         console.error('Auto-journal error:', error);
-        if (error.message?.includes("closed accounting period")) {
+        if (message.includes("closed accounting period")) {
           toast.error("Stock updated, but Journal failed: Closed Period");
         } else {
-          toast.warning(`Stock updated, but Journal failed: ${error.message}`);
+          toast.warning(`Stock updated, but Journal failed: ${message}`);
         }
       }
     },

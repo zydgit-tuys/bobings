@@ -40,6 +40,7 @@ import { useVariants, useProductSuppliers } from "@/hooks/use-products";
 import { useAddPurchaseLine, useUpdatePurchaseLine, usePurchase } from "@/hooks/use-purchases";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { getLastUnitCost } from "@/lib/api/inventory";
 
 const lineSchema = z.object({
   variant_id: z.string().min(1, "Variant is required"),
@@ -105,12 +106,16 @@ export function PurchaseLineDialog({ open, onOpenChange, purchaseId, initialData
     // NOTE: We only auto-update if productSuppliers is loaded for the CURRENT product
     if (!productSuppliers || productSuppliers.length === 0) {
       if (productSuppliers && selectedVariantData) {
-        const baseHpp = (selectedVariantData.products as any)?.base_hpp || 0;
-        // Only update if current form value is 0 (untouched/default) to avoid overwriting user manual input
-        // Actually, if user SWITCHES variant, we want to overwrite.
-        // But this effect runs on load too?
-        // "variant_id" changes on switch.
-        form.setValue("unit_cost", baseHpp);
+        const updateCost = async () => {
+          try {
+            const latestCost = await getLastUnitCost(selectedVariantId);
+            form.setValue("unit_cost", latestCost);
+          } catch (error) {
+            console.error("Failed to fetch last unit cost", error);
+            form.setValue("unit_cost", 0);
+          }
+        };
+        updateCost();
       }
       return;
     }
@@ -127,8 +132,16 @@ export function PurchaseLineDialog({ open, onOpenChange, purchaseId, initialData
     } else if (generalPrice) {
       form.setValue("unit_cost", generalPrice.purchase_price);
     } else if (selectedVariantData) {
-      const baseHpp = (selectedVariantData.products as any)?.base_hpp || 0;
-      form.setValue("unit_cost", baseHpp);
+      const updateCost = async () => {
+        try {
+          const latestCost = await getLastUnitCost(selectedVariantId);
+          form.setValue("unit_cost", latestCost);
+        } catch (error) {
+          console.error("Failed to fetch last unit cost", error);
+          form.setValue("unit_cost", 0);
+        }
+      };
+      updateCost();
     }
   }, [selectedVariantId, purchase?.supplier_id, productSuppliers, selectedVariantData, form]);
 

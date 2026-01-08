@@ -36,6 +36,15 @@ export interface PaymentFilters {
     paymentMethod?: string;
 }
 
+export interface OutstandingOrder {
+    id: string;
+    order_no: string;
+    order_date: string;
+    total_amount: number;
+    paid_amount: number;
+    outstanding_amount: number;
+}
+
 export const getCustomerPayments = async (filters?: PaymentFilters) => {
     let query = supabase
         .from('customer_payments')
@@ -132,10 +141,11 @@ export const createCustomerPayment = async (data: CreatePaymentData) => {
 // Simplified version - get from sales_orders directly
 export const getCustomerOutstandingOrders = async (customerId: string) => {
     const { data: orders, error } = await supabase
-        .from('sales_orders')
-        .select('id, desty_order_no, order_date, total_amount')
+        .from('v_sales_order_payments')
+        .select('id, desty_order_no, order_date, total_amount, paid_amount, outstanding_amount')
         .eq('customer_id', customerId)
         .eq('status', 'completed')
+        .gt('outstanding_amount', 0)
         .order('order_date', { ascending: false });
 
     if (error) {
@@ -143,14 +153,12 @@ export const getCustomerOutstandingOrders = async (customerId: string) => {
         return [];
     }
 
-    // For now, return all completed orders
-    // TODO: Add paid_amount column to sales_orders table
     return (orders || []).map(order => ({
         id: order.id,
         order_no: order.desty_order_no,
         order_date: order.order_date,
         total_amount: order.total_amount || 0,
-        paid_amount: 0, // TODO: Calculate from allocations
-        outstanding_amount: order.total_amount || 0,
-    }));
+        paid_amount: order.paid_amount || 0,
+        outstanding_amount: order.outstanding_amount || 0,
+    })) as OutstandingOrder[];
 };

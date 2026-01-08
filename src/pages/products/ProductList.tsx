@@ -19,6 +19,8 @@ import { DataTable } from "@/components/shared/DataTable";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useProducts, useDeleteProduct, useRestoreProduct, useUpdateProduct, useBrands, useCategories, useVariantAttributes } from "@/hooks/use-products";
 import { Search, Filter, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { getInventoryCostSnapshots } from "@/lib/api/inventory";
 
 interface ProductListProps {
   embedded?: boolean;
@@ -44,6 +46,20 @@ export default function ProductList({ embedded = false }: ProductListProps) {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const { data: attributes } = useVariantAttributes();
+
+  const variantIds = useMemo(() => (
+    products?.flatMap((product: any) => product.product_variants?.map((variant: any) => variant.id) ?? []) ?? []
+  ), [products]);
+
+  const { data: costSnapshots = [] } = useQuery({
+    queryKey: ['inventory-costs', variantIds],
+    queryFn: () => getInventoryCostSnapshots(variantIds),
+    enabled: variantIds.length > 0,
+  });
+
+  const costMap = useMemo(() => (
+    new Map(costSnapshots.map((snapshot) => [snapshot.variant_id, snapshot]))
+  ), [costSnapshots]);
 
   const getVariantName = (variant: any) => {
     const sizeAttr = attributes?.find((a: any) => a.code === 'size' || a.name.toLowerCase() === 'size');
@@ -95,8 +111,12 @@ export default function ProductList({ embedded = false }: ProductListProps) {
       const variants = product.product_variants || [];
       // Check low stock: if ANY variant is below alert threshold
       const isLowStock = variants.some((v: any) => (v.stock_qty || 0) <= (v.min_stock_alert || 5));
-      // Asset value: SUM(stock * hpp) per variant (fallback to product base_hpp or 0)
-      const value = variants.reduce((vVal: number, v: any) => vVal + ((v.stock_qty || 0) * (Number(v.hpp || product.base_hpp || 0))), 0);
+      // Asset value: SUM(stock * last/average cost) per variant
+      const value = variants.reduce((vVal: number, v: any) => {
+        const costSnapshot = costMap.get(v.id);
+        const unitCost = costSnapshot?.weighted_avg_cost ?? costSnapshot?.last_unit_cost ?? 0;
+        return vVal + ((v.stock_qty || 0) * Number(unitCost || 0));
+      }, 0);
 
       return {
         total: acc.total + 1,
@@ -104,7 +124,7 @@ export default function ProductList({ embedded = false }: ProductListProps) {
         assetValue: acc.assetValue + value
       };
     }, { total: 0, lowStock: 0, assetValue: 0 });
-  }, [products]);
+  }, [products, costMap]);
 
   const columns = [
     {

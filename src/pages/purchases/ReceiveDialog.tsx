@@ -51,33 +51,45 @@ export function ReceiveDialog({ open, onOpenChange, purchase }: ReceiveDialogPro
         { purchaseId: purchase.id, receivedQtys: finalQuantities }
       );
 
-      // Calculate Journal Amount for THIS receipt only
-      let receiptJournalAmount = 0;
-      Object.entries(quantities).forEach(([lineId, qtyNow]) => {
-        const line = purchase.purchase_order_lines.find((l: any) => l.id === lineId);
-        if (line && qtyNow > 0) {
-          receiptJournalAmount += qtyNow * (line.unit_cost || 0);
-        }
-      });
+      // Build receipt lines for API (Incremental qty)
+      const receiptLines = Object.entries(quantities)
+        .map(([lineId, qtyNow]) => {
+          const line = purchase.purchase_order_lines.find((l: any) => l.id === lineId);
+          if (!line || qtyNow <= 0) return null;
+
+          return {
+            purchase_line_id: lineId,
+            variant_id: line.product_variants?.id,
+            qty: qtyNow,
+            unit_cost: line.unit_cost || 0,
+          };
+        })
+        .filter(Boolean);
+
+      if (receiptLines.length === 0) {
+        toast.error('Tidak ada barang yang diterima');
+        return;
+      }
 
       // Step 2: Create journal entry for liability (INCREMENTAL)
-      if (receiptJournalAmount > 0) {
-        try {
-          await triggerAutoJournalPurchase(
-            purchase.id,
-            'receive', // Create Hutang Supplier
-            undefined, // No payment type for receive
-            receiptJournalAmount, // Uses Calculated Amount
-            undefined  // No bank account
-          );
-          toast.success(`Barang diterima & Jurnal Hutang dibuat - Rp ${receiptJournalAmount.toLocaleString()}`);
-        } catch (journalError: any) {
-          // Goods receipt succeeded but journal failed - warn user
-          toast.warning(
-            `Barang berhasil diterima, tapi jurnal otomatis gagal: ${journalError.message}. Silakan buat jurnal manual.`,
-            { duration: 6000 }
-          );
-        }
+      try {
+        await triggerAutoJournalPurchase({
+          purchaseId: purchase.id,
+          operationType: 'receive',
+          receiptLines: receiptLines as any[],
+          notes: `Receipt for ${purchase.purchase_no}`,
+        });
+
+        const totalAmount = receiptLines.reduce((sum, line: any) =>
+          sum + (line.qty * line.unit_cost), 0
+        );
+        toast.success(`Barang diterima & Jurnal Hutang dibuat - Rp ${totalAmount.toLocaleString()}`);
+      } catch (journalError: any) {
+        // Goods receipt succeeded but journal failed - warn user
+        toast.warning(
+          `Barang berhasil diterima, tapi jurnal otomatis gagal: ${journalError.message}. Silakan buat jurnal manual.`,
+          { duration: 6000 }
+        );
       }
 
       onOpenChange(false);

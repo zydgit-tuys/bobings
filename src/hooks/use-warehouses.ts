@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getWarehouses, getWarehouse, createWarehouse, updateWarehouse, deleteWarehouse, getDefaultWarehouse } from '@/lib/api/warehouses';
 import { toast } from 'sonner';
+import type { TablesUpdate } from '@/types';
 
 export function useWarehouses() {
     return useQuery({
@@ -43,7 +44,7 @@ export function useUpdateWarehouse() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ id, updates }: { id: string; updates: any }) =>
+        mutationFn: ({ id, updates }: { id: string; updates: TablesUpdate<'warehouses'> }) =>
             updateWarehouse(id, updates),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['warehouses'] });

@@ -175,7 +175,7 @@ serve(async (req) => {
       .insert({
         entry_date: new Date().toISOString().split('T')[0],
         reference_type: 'purchase_return',
-        reference_id: returnId,
+        reference_id: returnData.purchase_id, // Link to PO for grouped filtering
         description: journalDescription,
         total_debit: totalReturnAmount,
         total_credit: totalReturnAmount
@@ -192,14 +192,47 @@ serve(async (req) => {
     }
 
     // Create Lines
+    // Fetch purchase payment status to log warning if needed
+    const { data: purchaseData, error: purchaseError } = await supabase
+      .from('purchases')
+      .select('total_amount, total_paid, total_returned')
+      .eq('id', returnData.purchase_id)
+      .single();
+
+    if (purchaseError) {
+      console.warn('⚠️ Could not fetch purchase data for payment status check:', purchaseError);
+    }
+
+    // Calculate net amount (after previous returns)
+    const netAmount = purchaseData ? ((purchaseData.total_amount || 0) - (purchaseData.total_returned || 0)) : 0;
+    const totalPaid = purchaseData ? (purchaseData.total_paid || 0) : 0;
+    const isFullyPaid = netAmount > 0 && totalPaid >= netAmount;
+
+    // TODO: Implement smart return logic based on payment status
+    // For now, always use Hutang to avoid errors when Kas account is not configured
+    // This is a temporary workaround - the correct logic should be:
+    // - If PO is fully paid → Debit Kas/Bank (refund)
+    // - If PO is unpaid/partial → Debit Hutang (reduce liability)
+
+    console.log(`💳 Payment Status: Paid ${totalPaid.toLocaleString()} / Net ${netAmount.toLocaleString()} - Fully Paid: ${isFullyPaid}`);
+
+    if (isFullyPaid) {
+      console.warn('⚠️ WARNING: PO is fully paid but using Hutang account for return. This creates negative liability.');
+      console.warn('⚠️ TODO: Configure Kas account in Settings to enable proper refund accounting.');
+    }
+
+    // Always use Hutang for now (temporary workaround)
+    const debitAccountId = hutangAccountId;
+    const debitDescription = `Retur - ${isFullyPaid ? 'Hutang (TEMP - should be Kas/Bank)' : 'Hutang Supplier'} - ${returnData.return_no}`;
+
     const journalLines = [
-      // Debit: Hutang Supplier
+      // Debit: Kas/Bank (if paid) or Hutang (if unpaid)
       {
         entry_id: journalEntry.id,
-        account_id: hutangAccountId,
+        account_id: debitAccountId,
         debit: totalReturnAmount,
         credit: 0,
-        description: `Retur - Hutang Supplier - ${returnData.return_no}`,
+        description: debitDescription,
       },
       // Credit: Persediaan
       {
@@ -220,10 +253,13 @@ serve(async (req) => {
       throw new Error(`Failed to create journal lines: ${linesError.message}`);
     }
 
-    // 5. Update Status to Completed
+    // 5. Update Status to Completed and link Journal
     const { error: updateError } = await supabase
       .from('purchase_returns')
-      .update({ status: 'completed' })
+      .update({
+        status: 'completed',
+        journal_entry_id: journalEntry.id
+      })
       .eq('id', returnId);
 
     if (updateError) {

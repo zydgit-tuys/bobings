@@ -1,28 +1,13 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert } from "@/types";
 
-export interface SalesReturn {
-    id: string;
-    sales_order_id: string;
-    return_no: string;
-    return_date: string;
-    status: 'draft' | 'completed';
-    reason: string | null;
-    total_refund: number;
-    created_at: string;
-    sales_return_lines: SalesReturnLine[];
-}
+export type SalesReturnRow = Tables<'sales_returns'>;
+export type SalesReturnLineRow = Tables<'sales_return_lines'>;
+export type SalesReturnLineOrderItem = Pick<Tables<'order_items'>, 'sku_variant' | 'product_name'>;
+type SalesReturnInsert = TablesInsert<'sales_returns'> & { is_credit_note?: boolean };
 
-export interface SalesReturnLine {
-    id: string;
-    return_id: string;
-    sales_order_line_id: string;
-    qty: number;
-    unit_price: number;
-    notes: string | null;
-    sales_order_lines?: {
-        sku_variant: string;
-        product_name: string;
-    };
+export interface SalesReturn extends SalesReturnRow {
+    sales_return_lines: Array<SalesReturnLineRow & { sales_order_lines?: SalesReturnLineOrderItem | null }>;
 }
 
 export async function createSalesReturn(data: {
@@ -31,25 +16,29 @@ export async function createSalesReturn(data: {
     reason: string;
     lines: { sales_order_line_id: string; qty: number; unit_price: number; notes?: string }[];
     is_credit_note?: boolean;
-}) {
+}): Promise<SalesReturnRow> {
     // 1. Create Header
+    const payload: SalesReturnInsert = {
+        sales_order_id: data.sales_order_id,
+        return_date: data.return_date,
+        reason: data.reason,
+        status: 'draft', // Always draft first
+        total_refund: data.lines.reduce((acc, line) => acc + (line.qty * line.unit_price), 0),
+    };
+
     const { data: returnData, error: returnError } = await supabase
         .from('sales_returns')
         .insert({
-            sales_order_id: data.sales_order_id,
-            return_date: data.return_date,
-            reason: data.reason,
-            status: 'draft', // Always draft first
-            total_refund: data.lines.reduce((acc, line) => acc + (line.qty * line.unit_price), 0),
+            ...payload,
             is_credit_note: data.is_credit_note || false
-        } as any)
+        })
         .select()
         .single();
 
     if (returnError) throw returnError;
 
     // 2. Create Lines
-    const linesToInsert = data.lines.map(line => ({
+    const linesToInsert: TablesInsert<'sales_return_lines'>[] = data.lines.map(line => ({
         return_id: returnData.id,
         sales_order_line_id: line.sales_order_line_id,
         qty: line.qty,
@@ -63,10 +52,10 @@ export async function createSalesReturn(data: {
 
     if (linesError) throw linesError;
 
-    return returnData;
+    return returnData as SalesReturnRow;
 }
 
-export async function getSalesReturnsByOrderId(orderId: string) {
+export async function getSalesReturnsByOrderId(orderId: string): Promise<SalesReturn[]> {
     const { data, error } = await supabase
         .from('sales_returns')
         .select(`
@@ -83,10 +72,10 @@ export async function getSalesReturnsByOrderId(orderId: string) {
         .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return data as SalesReturn[];
 }
 
-export async function completeSalesReturn(returnId: string) {
+export async function completeSalesReturn(returnId: string): Promise<SalesReturnRow> {
     // 1. Update status to completed -> Triggers Stock Update
     const { data, error } = await supabase
         .from('sales_returns')
@@ -109,5 +98,5 @@ export async function completeSalesReturn(returnId: string) {
         // We don't block the UI success if journaling fails, but we log it.
     }
 
-    return data;
+    return data as SalesReturnRow;
 }

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/types';
 import { startOfMonth, subMonths, format, startOfWeek, subDays } from 'date-fns';
 
 // ============================================
@@ -154,6 +155,13 @@ export async function getStockMovementTrend(days: number = 30) {
 // PURCHASE ANALYTICS
 // ============================================
 
+type PurchaseStatsRow = Pick<
+  Tables<'purchases'>,
+  'order_date' | 'total_amount' | 'total_qty' | 'status'
+> & {
+  suppliers?: Pick<Tables<'suppliers'>, 'name'> | null;
+};
+
 export async function getPurchaseStats(days: number = 90) {
   const startDate = subDays(new Date(), days).toISOString().split('T')[0];
 
@@ -171,8 +179,10 @@ export async function getPurchaseStats(days: number = 90) {
 
   if (error) throw error;
 
+  const purchaseData = (data || []) as PurchaseStatsRow[];
+
   // Group by status
-  const byStatus = (data || []).reduce((acc, p) => {
+  const byStatus = purchaseData.reduce((acc, p) => {
     if (!acc[p.status]) acc[p.status] = { count: 0, amount: 0 };
     acc[p.status].count++;
     acc[p.status].amount += Number(p.total_amount) || 0;
@@ -180,8 +190,8 @@ export async function getPurchaseStats(days: number = 90) {
   }, {} as Record<string, { count: number; amount: number }>);
 
   // Group by supplier
-  const bySupplier = (data || []).reduce((acc, p) => {
-    const name = (p.suppliers as any)?.name || 'Unknown';
+  const bySupplier = purchaseData.reduce((acc, p) => {
+    const name = (p.suppliers as PurchaseStatsRow['suppliers'])?.name || 'Unknown';
     if (!acc[name]) acc[name] = { supplier: name, amount: 0, orders: 0 };
     acc[name].amount += Number(p.total_amount) || 0;
     acc[name].orders++;
@@ -189,7 +199,7 @@ export async function getPurchaseStats(days: number = 90) {
   }, {} as Record<string, { supplier: string; amount: number; orders: number }>);
 
   // Trend by month
-  const byMonth = (data || []).reduce((acc, p) => {
+  const byMonth = purchaseData.reduce((acc, p) => {
     const month = p.order_date.substring(0, 7);
     if (!acc[month]) acc[month] = { month, amount: 0, qty: 0 };
     acc[month].amount += Number(p.total_amount) || 0;
@@ -201,8 +211,8 @@ export async function getPurchaseStats(days: number = 90) {
     byStatus,
     bySupplier: Object.values(bySupplier).sort((a, b) => b.amount - a.amount),
     byMonth: Object.values(byMonth),
-    totalSpend: (data || []).reduce((sum, p) => sum + (Number(p.total_amount) || 0), 0),
-    totalOrders: data?.length || 0,
+    totalSpend: purchaseData.reduce((sum, p) => sum + (Number(p.total_amount) || 0), 0),
+    totalOrders: purchaseData.length,
   };
 }
 

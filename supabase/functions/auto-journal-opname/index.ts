@@ -61,9 +61,10 @@ serve(async (req) => {
             );
         }
 
-        const { opnameId } = await req.json();
+        const { opnameId, opname_id: opnameIdLegacy } = await req.json();
+        const targetOpnameId = opnameId ?? opnameIdLegacy;
 
-        if (!opnameId) {
+        if (!targetOpnameId) {
             throw new Error('Missing opnameId');
         }
 
@@ -74,7 +75,7 @@ serve(async (req) => {
         *,
         stock_opname_lines(*)
       `)
-            .eq('id', opnameId)
+            .eq('id', targetOpnameId)
             .single();
 
         if (opnameError || !opname) {

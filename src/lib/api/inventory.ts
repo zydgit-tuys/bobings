@@ -1,6 +1,12 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { StockMovement, InventoryAlert, MovementType } from '@/types';
 
+export interface InventoryCostSnapshot {
+  variant_id: string;
+  last_unit_cost: number | null;
+  weighted_avg_cost: number | null;
+}
+
 // ============================================
 // STOCK MOVEMENTS API
 // ============================================
@@ -79,22 +85,30 @@ export async function getInventoryValuation() {
       sku_variant,
       stock_qty,
       price,
-      products(name, base_hpp)
+      products(name)
     `)
     .eq('is_active', true)
     .gt('stock_qty', 0);
 
   if (error) throw error;
 
+  const variantIds = (data || []).map((variant) => variant.id);
+  const costSnapshots = await getInventoryCostSnapshots(variantIds);
+  const costMap = new Map(
+    costSnapshots.map((snapshot) => [snapshot.variant_id, snapshot])
+  );
+
   let totalValue = 0;
   let totalRetailValue = 0;
   let totalItems = 0;
 
   const items = (data || []).map(v => {
-    // Use product base_hpp as fallback
-    const product = Array.isArray(v.products) ? v.products[0] : v.products;
-    const hpp = product?.base_hpp || 0;
-    const costValue = v.stock_qty * hpp;
+    const costSnapshot = costMap.get(v.id);
+    const unitCost =
+      costSnapshot?.weighted_avg_cost ??
+      costSnapshot?.last_unit_cost ??
+      0;
+    const costValue = v.stock_qty * unitCost;
     const retailValue = v.stock_qty * v.price;
 
     totalValue += costValue;
@@ -103,7 +117,7 @@ export async function getInventoryValuation() {
 
     return {
       ...v,
-      hpp, // Add hpp back to the object for UI if needed
+      unit_cost: unitCost,
       costValue,
       retailValue,
       potentialProfit: retailValue - costValue,
@@ -119,6 +133,29 @@ export async function getInventoryValuation() {
       potentialProfit: totalRetailValue - totalValue,
     },
   };
+}
+
+export async function getLastUnitCost(variantId: string) {
+  const { data, error } = await supabase.rpc('get_last_unit_cost', {
+    p_variant_id: variantId,
+  });
+
+  if (error) throw error;
+  return Number(data || 0);
+}
+
+export async function getInventoryCostSnapshots(variantIds: string[]) {
+  if (variantIds.length === 0) {
+    return [] as InventoryCostSnapshot[];
+  }
+
+  const { data, error } = await supabase
+    .from('v_inventory_costs')
+    .select('variant_id, last_unit_cost, weighted_avg_cost')
+    .in('variant_id', variantIds);
+
+  if (error) throw error;
+  return (data || []) as InventoryCostSnapshot[];
 }
 
 // ============================================

@@ -5,10 +5,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Plus, Trash2, PackageCheck, CreditCard, Package, Wallet, Loader2, Pencil } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, PackageCheck, CreditCard, Package, Wallet, Loader2, Pencil, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Form,
   FormControl,
@@ -24,6 +30,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -45,6 +59,10 @@ import { ReceiveDialog } from "./ReceiveDialog";
 import { PaymentDialog } from "./PaymentDialog";
 import { ReturnDialog } from "./ReturnDialog";
 import { PurchaseReturnList } from "./PurchaseReturnList";
+import { PurchaseReceiptList } from "./PurchaseReceiptList";
+import { PurchasePaymentList } from "./PurchasePaymentList";
+import { PurchaseFinancialSummary } from "./PurchaseFinancialSummary";
+import { SmartStatusCard } from "./components/SmartStatusCard";
 
 const purchaseSchema = z.object({
   purchase_no: z.string().optional(),
@@ -140,6 +158,17 @@ export default function PurchaseForm() {
   };
 
   const handleConfirmOrder = () => {
+    // Validation: Must have items
+    if (!purchase?.purchase_order_lines || purchase.purchase_order_lines.length === 0) {
+      toast.error("Tidak bisa konfirmasi: Harap tambahkan minimal 1 item barang.");
+      return;
+    }
+    // Validation: Must have supplier
+    if (!purchase?.supplier_id) {
+      toast.error("Tidak bisa konfirmasi: Harap pilih supplier.");
+      return;
+    }
+
     // We only need the ID now, as logic is in backend
     confirmPurchase.mutate(id!, {
       onSuccess: () => {
@@ -201,6 +230,39 @@ export default function PurchaseForm() {
     },
   ];
 
+  // Mobile card view for Lines
+  const mobileLineRender = (line: any) => (
+    <div className="p-3 space-y-2 relative">
+      <div className="flex justify-between items-start pr-8">
+        <div>
+          <div className="font-medium text-sm">{line.product_variants?.sku_variant}</div>
+          <div className="text-xs text-muted-foreground">Order: {line.qty_ordered} • Received: {line.qty_received}</div>
+        </div>
+        <div className="text-right">
+          <div className="font-medium text-sm">Rp {(line.subtotal || 0).toLocaleString()}</div>
+          <div className="text-xs text-muted-foreground">@ Rp {(line.unit_cost || 0).toLocaleString()}</div>
+        </div>
+      </div>
+
+      {purchase?.status === 'draft' && (
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          <Button
+            variant="ghost" size="icon" className="h-6 w-6"
+            onClick={(e) => { e.stopPropagation(); setEditingLine(line); setShowLineDialog(true); }}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost" size="icon" className="h-6 w-6 text-destructive"
+            onClick={(e) => { e.stopPropagation(); deleteLine.mutate(line.id); }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   if (isEdit && (isLoading || !purchase)) {
     return (
       <div className="flex h-[400px] items-center justify-center">
@@ -217,83 +279,26 @@ export default function PurchaseForm() {
           <PageHeader
             title={isEdit ? `Purchase Order: ${purchase?.purchase_no}` : "New Purchase Order"}
             action={
-              <div className="flex flex-col sm:flex-row gap-2 justify-end">
+              <div className="flex items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => navigate('/purchases')}
-                  className="w-full sm:w-auto"
+                  className="hidden sm:inline-flex"
                 >
-                  Batal
+                  Kembali
                 </Button>
 
-                {isEdit && (purchase?.status === 'ordered' || (purchase?.status as string) === 'partial') && (
-                  <Button
-                    type="button"
-                    onClick={() => setShowReceiveDialog(true)}
-                    className="w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white"
-                  >
-                    <Package className="mr-2 h-4 w-4" />
-                    Terima Barang
-                  </Button>
-                )}
-
-                {isEdit && (purchase?.status === 'received' || purchase?.status === 'ordered' || (purchase?.status as string) === 'partial') && (
-                  <Button
-                    type="button"
-                    onClick={() => setShowPaymentDialog(true)}
-                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Wallet className="mr-2 h-4 w-4" />
-                    Bayar / Pelunasan
-                  </Button>
-                )}
-
-                {isEdit && (purchase?.status === 'received' || purchase?.status === 'completed' || purchase?.status === 'partial') && (
-                  <Button
-                    type="button"
-                    onClick={() => setShowReturnDialog(true)}
-                    variant="destructive"
-                    className="w-full sm:w-auto"
-                  >
-                    Retur Barang
-                  </Button>
-                )}
-
-                {isEdit && purchase?.status === 'completed' && (
-                  <Button
-                    type="button"
-                    onClick={() => setShowPaymentDialog(true)}
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                  >
-                    <Wallet className="mr-2 h-4 w-4" />
-                    Riwayat Pembayaran
-                  </Button>
-                )}
-
-                {/* Journal Drill-down Button */}
-                {isEdit && (purchase?.status === 'ordered' || purchase?.status === 'received' || purchase?.status === 'completed' || (purchase?.status as string) === 'partial') && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full sm:w-auto border-dashed border-2"
-                    onClick={() => navigate(`/accounting?tab=journals&ref_id=${id}`)}
-                  >
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Lihat Jurnal
-                  </Button>
-                )}
-
+                {/* Primary Action Button (Desktop & Mobile) */}
                 {isEdit && purchase?.status === 'draft' && (
                   <Button
                     type="button"
                     onClick={handleConfirmOrder}
-                    disabled={confirmPurchase.isPending || updatePurchase.isPending}
-                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={confirmPurchase.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {confirmPurchase.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
-                    Konfirmasi Pesanan
+                    Konfirmasi
                   </Button>
                 )}
 
@@ -301,166 +306,278 @@ export default function PurchaseForm() {
                   type="submit"
                   form="purchase-form"
                   disabled={createPurchase.isPending || updatePurchase.isPending}
-                  className="w-full sm:w-auto"
+                  variant={isEdit && purchase?.status !== 'draft' ? "outline" : "default"}
                 >
                   {(createPurchase.isPending || updatePurchase.isPending) ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <Save className="mr-2 h-4 w-4" />
                   )}
-                  {isEdit ? (purchase?.status === 'draft' ? "Update Draft" : "Update Order") : "Simpan Draft"}
+                  {isEdit ? "Simpan" : "Buat Draft"}
                 </Button>
+
+                {/* Secondary Actions Dropdown */}
+                {isEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Aksi Lainnya</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+
+                      {/* Lifecycle Actions */}
+                      {(purchase?.status === 'ordered' || (purchase?.status as string) === 'partial') && (purchase.total_received || 0) < (purchase.total_amount || 0) && (
+                        <DropdownMenuItem onClick={() => setShowReceiveDialog(true)}>
+                          <Package className="mr-2 h-4 w-4" /> Terima Barang
+                        </DropdownMenuItem>
+                      )}
+
+                      {(purchase?.status === 'received' || purchase?.status === 'ordered' || (purchase?.status as string) === 'partial') && (purchase.total_paid || 0) < ((purchase.total_amount || 0) - (purchase.total_returned || 0)) && (
+                        <DropdownMenuItem onClick={() => setShowPaymentDialog(true)}>
+                          <Wallet className="mr-2 h-4 w-4" /> Bayar Tagihan
+                        </DropdownMenuItem>
+                      )}
+
+                      {(purchase?.status === 'received' || purchase?.status === 'completed' || purchase?.status === 'partial') && (purchase.total_received || 0) > 0 && (
+                        <DropdownMenuItem onClick={() => setShowReturnDialog(true)} className="text-destructive w-full cursor-pointer flex items-center">
+                          Retur Barang
+                        </DropdownMenuItem>
+                      )}
+
+                      <DropdownMenuSeparator />
+
+                      <DropdownMenuItem onClick={() => navigate(`/accounting?tab=journals&ref_id=${id}`)}>
+                        <CreditCard className="mr-2 h-4 w-4" /> Lihat Jurnal
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             }
           />
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className={cn(isEdit ? "lg:col-span-1" : "lg:col-span-3 max-w-2xl")}>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Order Details</CardTitle>
-                {isEdit && purchase && <StatusBadge status={purchase.status} />}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="purchase_no"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>PO Number</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="Auto-generated by system"
-                          readOnly
-                          className="bg-muted"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          {isEdit && purchase && (
+            <SmartStatusCard
+              status={purchase.status}
+              totalAmount={purchase.total_amount || 0}
+              totalReceived={purchase.total_received || 0}
+              totalPaid={purchase.total_paid || 0}
+              totalReturned={purchase.total_returned || 0}
+              totalQty={purchase.total_qty || 0}
+              receivedQty={purchase.purchase_order_lines?.reduce((sum: number, line: any) => sum + (line.qty_received || 0), 0) || 0}
+              onReceive={() => setShowReceiveDialog(true)}
+              onPay={() => setShowPaymentDialog(true)}
+            />
+          )}
 
-                <FormField
-                  control={form.control}
-                  name="supplier_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Supplier</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={isReadOnly}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select supplier" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {suppliers?.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="order_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Order Date</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="date" disabled={isReadOnly} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="expected_date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Expected Date</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="date" disabled={isReadOnly} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notes</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} disabled={isReadOnly} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Internal submit button removed in favor of header action */}
-              </CardContent>
-            </Card>
-
-            {isEdit && (
-              <Card className="lg:col-span-2">
+          <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
+            {/* LEFT SECTION: Order Details + Financial Summary */}
+            <div className="space-y-6">
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Order Lines</CardTitle>
-                  {purchase?.status === "draft" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        setEditingLine(null);
-                        setShowLineDialog(true);
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Item
-                    </Button>
-                  )}
+                  <CardTitle>Order Details</CardTitle>
+                  {isEdit && purchase && <StatusBadge status={purchase.status} />}
                 </CardHeader>
-                <CardContent>
-                  <DataTable
-                    columns={lineColumns}
-                    data={purchase?.purchase_order_lines ?? []}
-                    emptyMessage="Belum ada item. Klik 'Add Item' untuk menambah barang."
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="purchase_no"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>PO Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="Auto-generated by system"
+                            readOnly
+                            className="bg-muted"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
 
-                  {purchase?.purchase_order_lines && purchase.purchase_order_lines.length > 0 && (
-                    <div className="mt-4 p-4 bg-muted/50 rounded-lg flex flex-col gap-2">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Total Quantity:</span>
-                        <span className="font-semibold">{purchase.total_qty} items</span>
-                      </div>
-                      <div className="flex justify-between items-center text-lg border-t pt-2">
-                        <span className="font-bold">Total Amount:</span>
-                        <span className="font-bold text-primary">
-                          Rp {(purchase.total_amount || 0).toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  <FormField
+                    control={form.control}
+                    name="supplier_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Supplier</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={isReadOnly}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select supplier" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {suppliers?.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="order_date"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Order Date</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="date" disabled={isReadOnly} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="expected_date"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Expected Date</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="date" disabled={isReadOnly} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl>
+                          <Textarea {...field} disabled={isReadOnly} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Internal submit button removed in favor of header action */}
                 </CardContent>
               </Card>
-            )}
 
-            {isEdit && <PurchaseReturnList purchaseId={id!} />}
+              {isEdit && purchase && (
+                <PurchaseFinancialSummary
+                  totalAmount={purchase.total_amount || 0}
+                  totalReceived={purchase.total_received || 0}
+                  totalPaid={purchase.total_paid || 0}
+                  totalReturned={purchase.total_returned || 0}
+                />
+              )}
+            </div>
+
+            {/* RIGHT SECTION: Tabs (Items, Receipts, Payments, Returns) */}
+            {isEdit && (
+              <div className="space-y-6">
+                <Tabs defaultValue="items" className="w-full">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="items">Barang</TabsTrigger>
+                    <TabsTrigger value="receipts">Penerimaan</TabsTrigger>
+                    <TabsTrigger value="payments">Pembayaran</TabsTrigger>
+                    <TabsTrigger value="returns">Retur</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="items" className="mt-4">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle>Order Lines</CardTitle>
+                        {purchase?.status === "draft" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              setEditingLine(null);
+                              setShowLineDialog(true);
+                            }}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Item
+                          </Button>
+                        )}
+                      </CardHeader>
+                      <CardContent>
+                        <DataTable
+                          columns={lineColumns}
+                          data={purchase?.purchase_order_lines ?? []}
+                          emptyMessage="Belum ada item."
+                          mobileCardRender={mobileLineRender}
+                        />
+
+                        {purchase?.purchase_order_lines && purchase.purchase_order_lines.length > 0 && (
+                          <div className="mt-4 p-4 bg-muted/50 rounded-lg flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-muted-foreground">Total Quantity:</span>
+                              <span className="font-semibold">{purchase.total_qty} items</span>
+                            </div>
+                            <div className="flex justify-between items-center text-lg border-t pt-2">
+                              <span className="font-bold">Total Amount:</span>
+                              <span className="font-bold text-primary">
+                                Rp {(purchase.total_amount || 0).toLocaleString('id-ID')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="receipts" className="mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Riwayat Penerimaan</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <PurchaseReceiptList purchaseId={id!} />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="payments" className="mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Riwayat Pembayaran</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <PurchasePaymentList purchaseId={id!} />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="returns" className="mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Riwayat Retur</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <PurchaseReturnList purchaseId={id!} />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
           </div>
 
         </form>

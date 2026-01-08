@@ -1,17 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types';
 
-export interface Warehouse {
-    id: string;
-    code: string;
-    name: string;
-    address?: string;
-    is_active: boolean;
-    is_default: boolean;
-    created_at: string;
-    updated_at: string;
-}
+export type Warehouse = Tables<'warehouses'>;
 
-export async function getWarehouses() {
+export async function getWarehouses(): Promise<Warehouse[]> {
     const { data, error } = await supabase
         .from('warehouses')
         .select('*')
@@ -23,7 +15,7 @@ export async function getWarehouses() {
     return data as Warehouse[];
 }
 
-export async function getWarehouse(id: string) {
+export async function getWarehouse(id: string): Promise<Warehouse> {
     const { data, error } = await supabase
         .from('warehouses')
         .select('*')
@@ -34,7 +26,7 @@ export async function getWarehouse(id: string) {
     return data as Warehouse;
 }
 
-export async function createWarehouse(warehouse: Omit<Warehouse, 'id' | 'created_at' | 'updated_at'>) {
+export async function createWarehouse(warehouse: TablesInsert<'warehouses'>): Promise<Warehouse> {
     const { data, error } = await supabase
         .from('warehouses')
         .insert(warehouse)
@@ -45,7 +37,7 @@ export async function createWarehouse(warehouse: Omit<Warehouse, 'id' | 'created
     return data as Warehouse;
 }
 
-export async function updateWarehouse(id: string, updates: Partial<Warehouse>) {
+export async function updateWarehouse(id: string, updates: TablesUpdate<'warehouses'>): Promise<Warehouse> {
     const { data, error } = await supabase
         .from('warehouses')
         .update(updates)
@@ -57,7 +49,7 @@ export async function updateWarehouse(id: string, updates: Partial<Warehouse>) {
     return data as Warehouse;
 }
 
-export async function deleteWarehouse(id: string) {
+export async function deleteWarehouse(id: string): Promise<void> {
     const { error } = await supabase
         .from('warehouses')
         .delete()
@@ -66,7 +58,7 @@ export async function deleteWarehouse(id: string) {
     if (error) throw error;
 }
 
-export async function getDefaultWarehouse() {
+export async function getDefaultWarehouse(): Promise<Warehouse> {
     const { data, error } = await supabase
         .from('warehouses')
         .select('*')

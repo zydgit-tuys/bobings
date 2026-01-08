@@ -1,16 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types';
 
-export interface Unit {
-    id: string;
-    code: string;
-    name: string;
-    symbol?: string;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-}
+export type Unit = Tables<'units'>;
 
-export async function getUnits() {
+export async function getUnits(): Promise<Unit[]> {
     const { data, error } = await supabase
         .from('units')
         .select('*')
@@ -21,7 +14,7 @@ export async function getUnits() {
     return data as Unit[];
 }
 
-export async function getAllUnits() {
+export async function getAllUnits(): Promise<Unit[]> {
     const { data, error } = await supabase
         .from('units')
         .select('*')
@@ -31,7 +24,7 @@ export async function getAllUnits() {
     return data as Unit[];
 }
 
-export async function getUnit(id: string) {
+export async function getUnit(id: string): Promise<Unit> {
     const { data, error } = await supabase
         .from('units')
         .select('*')
@@ -42,7 +35,7 @@ export async function getUnit(id: string) {
     return data as Unit;
 }
 
-export async function createUnit(unit: Omit<Unit, 'id' | 'created_at' | 'updated_at'>) {
+export async function createUnit(unit: TablesInsert<'units'>): Promise<Unit> {
     const { data, error } = await supabase
         .from('units')
         .insert(unit)
@@ -55,8 +48,8 @@ export async function createUnit(unit: Omit<Unit, 'id' | 'created_at' | 'updated
 
 export async function updateUnit(
     id: string,
-    updates: Partial<Pick<Unit, 'name' | 'symbol' | 'is_active'>>
-) {
+    updates: TablesUpdate<'units'>
+): Promise<Unit> {
     const { data, error } = await supabase
         .from('units')
         .update({ ...updates, updated_at: new Date().toISOString() })
@@ -68,7 +61,7 @@ export async function updateUnit(
     return data as Unit;
 }
 
-export async function deleteUnit(id: string) {
+export async function deleteUnit(id: string): Promise<void> {
     const { error } = await supabase
         .from('units')
         .delete()

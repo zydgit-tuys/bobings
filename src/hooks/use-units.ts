@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getUnits, getAllUnits, getUnit, createUnit, updateUnit, deleteUnit } from '@/lib/api/units';
 import { toast } from 'sonner';
+import type { TablesUpdate } from '@/types';
 
 export function useUnits() {
     return useQuery({
@@ -43,7 +44,7 @@ export function useUpdateUnit() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) => updateUnit(id, data),
+        mutationFn: ({ id, data }: { id: string; data: TablesUpdate<'units'> }) => updateUnit(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['units'] });
             toast.success('Unit updated successfully');

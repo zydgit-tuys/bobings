@@ -26,12 +26,13 @@ export function JournalEntries() {
     referenceId: searchParams.get("ref_id") || "",
   });
 
-  // Sync filters from URL on mount only (optional, or keep 2-way sync)
+  // Sync filters from URL
   useEffect(() => {
-    const refId = searchParams.get("ref_id");
-    if (refId) {
-      setFilters(f => ({ ...f, referenceId: refId }));
-    }
+    setFilters({
+      startDate: searchParams.get("start") || "",
+      endDate: searchParams.get("end") || "",
+      referenceId: searchParams.get("ref_id") || "",
+    });
   }, [searchParams]);
 
   const { data: entries, isLoading } = useJournalEntries(

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { AccountMappingSettings } from "./AccountMappingSettings";
+import { AccountMappingSettingsV2 } from "./AccountMappingSettingsV2";
 import { GeneralSettings } from "./GeneralSettings";
 import { BankAccountSettings } from "./BankAccountSettings";
 import { WarehouseSettings } from "./WarehouseSettings";
+import { DevTools } from "./DevTools";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("account-mapping");
@@ -30,10 +31,13 @@ export default function SettingsPage() {
           <TabsTrigger value="general" className="text-xs md:text-sm">
             Pengaturan Umum
           </TabsTrigger>
+          <TabsTrigger value="dev-tools" className="text-xs md:text-sm">
+            Dev Tools
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="account-mapping" className="space-y-4">
-          <AccountMappingSettings />
+          <AccountMappingSettingsV2 />
         </TabsContent>
 
         <TabsContent value="bank-accounts" className="space-y-4">
@@ -46,6 +50,10 @@ export default function SettingsPage() {
 
         <TabsContent value="general" className="space-y-4">
           <GeneralSettings />
+        </TabsContent>
+
+        <TabsContent value="dev-tools" className="space-y-4">
+          <DevTools />
         </TabsContent>
       </Tabs>
     </div>

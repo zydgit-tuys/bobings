@@ -1,22 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types';
 
-export interface ProductImage {
-    id: string;
-    product_id: string;
-    image_url: string;
-    storage_path: string;
-    display_order: number;
-    is_primary: boolean;
-    alt_text?: string;
-    file_size?: number;
-    width?: number;
-    height?: number;
-    uploaded_by?: string;
-    created_at: string;
-    updated_at: string;
-}
+export type ProductImage = Tables<'product_images'>;
 
-export async function getProductImages(productId: string) {
+export async function getProductImages(productId: string): Promise<ProductImage[]> {
     const { data, error } = await supabase
         .from('product_images')
         .select('*')
@@ -27,17 +14,7 @@ export async function getProductImages(productId: string) {
     return data as ProductImage[];
 }
 
-export async function createProductImage(image: {
-    product_id: string;
-    image_url: string;
-    storage_path: string;
-    display_order: number;
-    is_primary?: boolean;
-    alt_text?: string;
-    file_size?: number;
-    width?: number;
-    height?: number;
-}) {
+export async function createProductImage(image: TablesInsert<'product_images'>): Promise<ProductImage> {
     const { data: { user } } = await supabase.auth.getUser();
 
     const { data, error } = await supabase
@@ -55,8 +32,8 @@ export async function createProductImage(image: {
 
 export async function updateProductImage(
     id: string,
-    updates: Partial<Pick<ProductImage, 'display_order' | 'is_primary' | 'alt_text'>>
-) {
+    updates: TablesUpdate<'product_images'>
+): Promise<ProductImage> {
     const { data, error } = await supabase
         .from('product_images')
         .update({ ...updates, updated_at: new Date().toISOString() })
@@ -68,7 +45,7 @@ export async function updateProductImage(
     return data as ProductImage;
 }
 
-export async function deleteProductImage(id: string) {
+export async function deleteProductImage(id: string): Promise<void> {
     const { error } = await supabase
         .from('product_images')
         .delete()
@@ -77,7 +54,7 @@ export async function deleteProductImage(id: string) {
     if (error) throw error;
 }
 
-export async function reorderProductImages(productId: string, imageIds: string[]) {
+export async function reorderProductImages(productId: string, imageIds: string[]): Promise<void> {
     const updates = imageIds.map((id, index) => ({
         id,
         display_order: index,
@@ -94,7 +71,7 @@ export async function reorderProductImages(productId: string, imageIds: string[]
     }
 }
 
-export async function setPrimaryImage(productId: string, imageId: string) {
+export async function setPrimaryImage(productId: string, imageId: string): Promise<ProductImage> {
     // First, unset all primary images for this product
     await supabase
         .from('product_images')

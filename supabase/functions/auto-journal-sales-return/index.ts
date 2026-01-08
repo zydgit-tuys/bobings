@@ -75,25 +75,49 @@ serve(async (req: Request) => {
         const isCreditNote = returnData.is_credit_note === true;
 
         // V2 MAPPING LOOKUP
-        // We prefer V2 mappings now.
-        // Event Type: 'sales_return' or 'credit_note'
-        const eventType = isCreditNote ? 'credit_note' : 'sales_return'; // Note: I haven't seeded 'sales_return' explicitly yet? I seeded 'credit_note'.
-        // Wait, did I seed 'sales_return'? I checked earlier files, I seeded 'credit_note', 'confirm_sales_order'.
-        // I did NOT seed 'sales_return' in the summary.
-        // So for Standard Return, I MUST fallback to V1 or hardcoded logic if V2 missing.
-        // But for Credit Note, I seeded it.
+        // Helper to query V2 mappings with correct schema
+        const getAccountFromV2 = async (
+            eventType: string,
+            context: string,
+            side: 'debit' | 'credit',
+            mplCode: string | null = null
+        ): Promise<string | null> => {
+            let query = supabase
+                .from('journal_account_mappings')
+                .select('account_id, priority')
+                .eq('event_type', eventType)
+                .eq('side', side)
+                .eq('is_active', true);
 
-        let accReturPenjualan, accPiutang, accKas, accPersediaan, accHpp;
+            // Context filter
+            if (context) {
+                query = query.or(`event_context.eq.${context},event_context.is.null`);
+            } else {
+                query = query.is('event_context', null);
+            }
 
-        // Try V2 Lookup first (especially for Credit Note)
-        const { data: v2Mappings } = await supabase
-            .from('journal_account_mappings')
-            .select('account_role, account_id')
-            .eq('event_type', eventType)
-            .eq('marketplace', marketplace);
+            // Marketplace filter
+            if (mplCode) {
+                query = query.or(`marketplace_code.eq.${mplCode},marketplace_code.is.null`);
+            } else {
+                query = query.is('marketplace_code', null);
+            }
 
-        // Helper to get from V2 array
-        const getV2 = (role: string) => v2Mappings?.find(m => m.account_role === role)?.account_id;
+            const { data, error } = await query.order('priority', { ascending: false }).limit(1).maybeSingle();
+
+            if (error) {
+                console.error("V2 Mapping Error:", error);
+                return null;
+            }
+            return data?.account_id || null;
+        };
+
+        const eventContext = marketplace.includes('offline') ? 'manual' : 'marketplace';
+        let mplCode = null;
+        if (marketplace.includes('shopee')) mplCode = 'shopee';
+        if (marketplace.includes('tokopedia')) mplCode = 'tokopedia';
+        if (marketplace.includes('tiktok')) mplCode = 'tiktok';
+        if (marketplace.includes('lazada')) mplCode = 'lazada';
 
         // 3. Get Account Mappings (Hybrid V2 / V1)
         const { data: settings } = await supabase
@@ -109,29 +133,51 @@ serve(async (req: Request) => {
 
         const getSetting = (key: string) => settings?.find(s => s.setting_key === key)?.setting_value;
 
-        // RESOLVE ACCOUNTS
-        // For Credit Note: we prioritized V2 'revenue' (which effectively acts as Contra-Revenue/Return in this context? Or did I map it to actual Revenue? 
-        // In 'auto-journal-sales' for credit note I used: 
-        // Debit: Revenue Account (Contra) -> I used 'revenue' role in seed?
-        // Let's check seed. 'credit_note' event maps 'revenue' and 'accounts_receivable'.
-        // So here:
-        // accReturPenjualan (Debit) -> getV2('revenue') || getSetting('account_retur_penjualan')
-        // accPiutang (Credit) -> getV2('accounts_receivable') || getSetting('account_piutang')
+        let accReturPenjualan, accPiutang, accKas, accPersediaan, accHpp;
 
-        accReturPenjualan = getV2('revenue') || getSetting('account_retur_penjualan');
-        // Note: For standard return, 'account_retur_penjualan' is a specific Contra-Revenue account (4200?).
-        // For Credit Note, if I used 'revenue' map, it might point to 4001 (Sales).
-        // A Credit Note usually Debits Sales (4001) directly OR Debits Sales Returns (4200).
-        // My previous logic in auto-journal-sales used mappings based on 'confirm_sales_order' copy.
-        // So it likely points to 4001. This is acceptable for Credit Note (Direct reversal).
+        if (isCreditNote) {
+            // FOR CREDIT NOTE:
+            // Mapping Logic:
+            // Debit: Revenue Account (Reversal) -> We look for the Revenue account (normally Credit side) and debit it.
+            // Credit: AR Account (Reversal) -> We look for the AR account (normally Debit side) and credit it.
 
-        accPiutang = getV2('accounts_receivable') || getSetting('account_piutang');
-        accKas = isOffline ? (getSetting('account_kas') || '1101') : null; // Fallback to 1101 if offline
+            // 1. Revenue (Debit side of CN)
+            // Try to find the account that is normally CREDITED for this channel (e.g., 4101 Revenue Shopee)
+            accReturPenjualan = await getAccountFromV2('credit_note', eventContext, 'credit', mplCode)
+                || await getAccountFromV2('confirm_sales_order', eventContext, 'credit', mplCode) // Fallback to sales mapping
+                || getSetting('account_retur_penjualan'); // Last fallback
+
+            // 2. AR (Credit side of CN)
+            // Try to find the account that is normally DEBITED for this channel (e.g., 1102 AR Shopee)
+            accPiutang = await getAccountFromV2('credit_note', eventContext, 'debit', mplCode)
+                || await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) // Fallback to sales mapping
+                || getSetting('account_piutang');
+
+        } else {
+            // STANDARD RETURN (Sales Return)
+            // Debit: Sales Return (Contra Revenue) OR Revenue directly.
+            // Credit: AR
+
+            // Note: If using distinct 'sales_return' event, use that. 
+            // If not, fallback to 'account_retur_penjualan' setting for the Debit side.
+
+            accReturPenjualan = await getAccountFromV2('sales_return', eventContext, 'debit', mplCode)
+                || getSetting('account_retur_penjualan');
+
+            accPiutang = await getAccountFromV2('sales_return', eventContext, 'credit', mplCode)
+                || await getAccountFromV2('confirm_sales_order', eventContext, 'debit', mplCode) // Fallback to standard AR
+                || getSetting('account_piutang');
+        }
+
+        accKas = isOffline ? (getSetting('account_kas') || '1101') : null;
 
         // Inventory accounts only needed if NOT credit note
         if (!isCreditNote) {
-            accPersediaan = getSetting('account_persediaan');
-            accHpp = getSetting('account_hpp');
+            accPersediaan = await getAccountFromV2('sales_return', eventContext, 'debit', mplCode) // Wait, inv is separate event? usually just settings for simple return
+                || getSetting('account_persediaan');
+
+            accHpp = await getAccountFromV2('sales_return', eventContext, 'credit', mplCode) // HPP reversal
+                || getSetting('account_hpp');
         }
 
         // Validate accounts

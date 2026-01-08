@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { usePayouts, useCreatePayout, useConfirmPayout } from "@/hooks/use-marketplace-payouts";
+import { useBankAccounts } from "@/hooks/use-bank-accounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/shared/DataTable";
@@ -8,19 +9,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { AlertCircle, Loader2, Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
-
-// Simplified Bank Selection (In real app, fetch from accounts)
-const BANK_ACCOUNTS = [
-    { id: 'acc_bank_bca', name: 'Bank BCA' }, // Placeholder, needs real UUIDs usually
-];
 
 export default function MarketplacePayoutsPage() {
     const { data: payouts, isLoading } = usePayouts();
     const createPayout = useCreatePayout();
     const confirmPayout = useConfirmPayout();
+    const { data: bankAccounts, isLoading: bankAccountsLoading } = useBankAccounts();
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -33,6 +31,13 @@ export default function MarketplacePayoutsPage() {
 
     // Confirm Form State
     const [bankAccountId, setBankAccountId] = useState("");
+
+    useEffect(() => {
+        if (isConfirmOpen && bankAccounts && bankAccounts.length > 0) {
+            const defaultBank = bankAccounts.find((account) => account.is_default);
+            setBankAccountId(defaultBank?.id ?? bankAccounts[0].id);
+        }
+    }, [bankAccounts, isConfirmOpen]);
 
     const handleCreate = async () => {
         if (!marketplace || !startDate || !endDate) {
@@ -51,15 +56,15 @@ export default function MarketplacePayoutsPage() {
 
     const handleConfirm = async () => {
         if (!selectedPayout || !bankAccountId) return;
+        const selectedBankAccount = bankAccounts?.find((account) => account.id === bankAccountId);
+        if (!selectedBankAccount) {
+            toast.error("Akun bank tidak valid. Silakan pilih ulang.");
+            return;
+        }
         try {
-            // In real implementation, we need valid UUIDs for accounts. 
-            // Ideally fetch from useAccounts where type='bank'.
-            // For now, we assume user inputs a valid UUID or we pick from a list.
-            // Let's create a temporary input for UUID if needed or just hardcode for demo if BANK_ACCOUNTS empty.
-
             await confirmPayout.mutateAsync({
                 payoutId: selectedPayout.id,
-                bankAccountId
+                bankAccountId: selectedBankAccount.id
             });
             setIsConfirmOpen(false);
             setSelectedPayout(null);
@@ -190,20 +195,35 @@ export default function MarketplacePayoutsPage() {
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label>Masuk ke Akun Bank *</Label>
-                            <Select value={bankAccountId} onValueChange={setBankAccountId}>
+                            <Select
+                                value={bankAccountId}
+                                onValueChange={setBankAccountId}
+                                disabled={bankAccountsLoading || !bankAccounts?.length}
+                            >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Pilih rekening bank" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {/* TODO: Replace with useBankAccounts hook */}
-                                    <SelectItem value="temp-bank-1">Bank BCA - 1234567890</SelectItem>
-                                    <SelectItem value="temp-bank-2">Bank Mandiri - 0987654321</SelectItem>
+                                    {bankAccounts?.map((account) => (
+                                        <SelectItem key={account.id} value={account.id}>
+                                            {account.bank_name}
+                                            {account.account_number ? ` - ${account.account_number}` : ""}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
                                 Pilih rekening bank tujuan pencairan dana marketplace
                             </p>
                         </div>
+
+                        {!bankAccountsLoading && (!bankAccounts || bankAccounts.length === 0) && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Belum ada rekening bank</AlertTitle>
+                                <AlertDescription>Silakan buat akun bank dulu.</AlertDescription>
+                            </Alert>
+                        )}
 
                         {/* Payout Details */}
                         {selectedPayout && (

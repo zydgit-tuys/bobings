@@ -109,7 +109,7 @@ export async function getVariants(productId?: string) {
     .from('product_variants')
     .select(`
       *,
-      products(id, name, sku_master, base_hpp)
+      products(id, name, sku_master)
     `)
     .eq('is_active', true);
 

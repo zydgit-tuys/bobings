@@ -10,6 +10,9 @@ export async function getPurchases() {
     .from('purchases')
     .select(`
       *,
+      total_received,
+      total_paid,
+      total_returned,
       suppliers(id, code, name),
       purchase_order_lines(
         id, qty_ordered, qty_received, unit_cost, notes,
@@ -22,7 +25,7 @@ export async function getPurchases() {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data;
+  return data as any;
 }
 
 export async function getPurchase(id: string) {
@@ -30,6 +33,9 @@ export async function getPurchase(id: string) {
     .from('purchases')
     .select(`
       *,
+      total_received,
+      total_paid,
+      total_returned,
       suppliers(id, code, name),
       purchase_order_lines(
         *,
@@ -43,7 +49,7 @@ export async function getPurchase(id: string) {
     .single();
 
   if (error) throw error;
-  return data;
+  return data as any;
 }
 
 export async function createPurchase(purchase: {
@@ -58,7 +64,7 @@ export async function createPurchase(purchase: {
     .insert({
       ...purchase,
       status: 'draft',
-    })
+    } as any)
     .select()
     .single();
 
@@ -74,7 +80,6 @@ export async function updatePurchase(id: string, purchase: Partial<Purchase>) {
     .select()
     .single();
 
-  if (error) throw error;
   if (error) throw error;
   return data;
 }
@@ -157,30 +162,94 @@ export async function receivePurchaseLines(purchaseId: string, receivedQtys: Rec
   if (error) throw error;
 }
 
-export async function triggerAutoJournalPurchase(
-  purchaseId: string,
-  operationType: 'receive' | 'payment',
-  paymentType?: 'cash' | 'bank',  // Optional, required for 'payment' operation
-  amount?: number,
-  bankAccountId?: string
-) {
+// ============================================
+// AUTO-JOURNAL API (V2 - With Tracking)
+// ============================================
+
+export interface ReceiptLine {
+  purchase_line_id: string;
+  variant_id: string;
+  qty: number;
+  unit_cost: number;
+}
+
+export interface AutoJournalReceiveRequest {
+  purchaseId: string;
+  operationType: 'receive';
+  receiptLines: ReceiptLine[];
+  receiptDate?: string;
+  notes?: string;
+}
+
+export interface AutoJournalPaymentRequest {
+  purchaseId: string;
+  operationType: 'payment';
+  paymentAmount: number;
+  paymentMethod: 'cash' | 'bank';
+  paymentDate?: string;
+  bankAccountId?: string;
+  notes?: string;
+}
+
+export type AutoJournalPurchaseRequest = AutoJournalReceiveRequest | AutoJournalPaymentRequest;
+
+export async function triggerAutoJournalPurchase(request: AutoJournalPurchaseRequest) {
   const { data, error } = await supabase.functions.invoke('auto-journal-purchase', {
-    body: { purchaseId, operationType, paymentType, amount, bankAccountId }
+    body: request
   });
 
   if (error) {
-    // Extract more specific error message if available
     const errorMessage = error.message || 'Unknown error from Edge Function';
     throw new Error(errorMessage);
   }
 
-  // Check if the response indicates an error
   if (data && !data.success && data.error) {
     throw new Error(data.error);
   }
 
   return data;
 }
+
+// Helper function for receive operation
+export async function receivePurchase(
+  purchaseId: string,
+  receiptLines: ReceiptLine[],
+  options?: {
+    receiptDate?: string;
+    notes?: string;
+  }
+) {
+  return triggerAutoJournalPurchase({
+    purchaseId,
+    operationType: 'receive',
+    receiptLines,
+    receiptDate: options?.receiptDate,
+    notes: options?.notes,
+  });
+}
+
+// Helper function for payment operation
+export async function payPurchase(
+  purchaseId: string,
+  paymentAmount: number,
+  paymentMethod: 'cash' | 'bank',
+  options?: {
+    paymentDate?: string;
+    bankAccountId?: string;
+    notes?: string;
+  }
+) {
+  return triggerAutoJournalPurchase({
+    purchaseId,
+    operationType: 'payment',
+    paymentAmount,
+    paymentMethod,
+    paymentDate: options?.paymentDate,
+    bankAccountId: options?.bankAccountId,
+    notes: options?.notes,
+  });
+}
+
 
 // Note: Purchase number generation is now handled by database trigger
 // See: supabase/migrations/20260102_refactor_po_logic.sql

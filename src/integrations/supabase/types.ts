@@ -1706,7 +1706,15 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_inventory_costs: {
+        Row: {
+          last_unit_cost: number | null
+          stock_qty: number | null
+          variant_id: string | null
+          weighted_avg_cost: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       adjust_inventory_atomic: {
@@ -1723,6 +1731,10 @@ export type Database = {
       }
       confirm_marketplace_payout: {
         Args: { p_bank_account_id: string; p_payout_id: string }
+        Returns: Json
+      }
+      confirm_stock_opname: {
+        Args: { p_opname_id: string }
         Returns: Json
       }
       confirm_purchase_order: { Args: { p_purchase_id: string }; Returns: Json }
@@ -1745,6 +1757,10 @@ export type Database = {
           period_name: string
           start_date: string
         }[]
+      }
+      get_last_unit_cost: {
+        Args: { p_variant_id: string }
+        Returns: number
       }
       get_inventory_alerts: {
         Args: never

@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Trash2, Check, ChevronsUpDown, PackageSearch } from "lucide-react";
 import { toast } from "sonner";
+import { getLastUnitCost } from "@/lib/api/inventory";
 import {
   Dialog,
   DialogContent,
@@ -150,7 +151,6 @@ export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrder
       stock: variant.stock_qty || 0,
       productName: product.name,
       sku: variant.sku_variant,
-      baseHpp: product.base_hpp || 0,
       productType: product.product_type || 'purchased',
     })) ?? []
   ) ?? [];
@@ -172,9 +172,20 @@ export function SalesOrderDialog({ open, onOpenChange, initialData }: SalesOrder
       form.setValue(`items.${index}.unit_price`, finalPrice);
 
       // Auto-fill HPP (Frozen at time of sale)
-      // Logic: Use product.base_hpp as default, 0 for service items
-      const defaultHpp = variant.productType === 'service' ? 0 : variant.baseHpp;
-      form.setValue(`items.${index}.hpp`, defaultHpp);
+      const updateHpp = async () => {
+        try {
+          const latestCost = await getLastUnitCost(variantId);
+          const defaultHpp = variant.productType === 'service' ? 0 : latestCost;
+          form.setValue(`items.${index}.hpp`, defaultHpp);
+        } catch (error: any) {
+          console.error('Failed to fetch latest unit cost', error);
+          const fallbackHpp = variant.productType === 'service' ? 0 : 0;
+          form.setValue(`items.${index}.hpp`, fallbackHpp);
+          toast.error('Gagal mengambil HPP terakhir');
+        }
+      };
+
+      updateHpp();
 
       if (isSpecialPrice) {
         toast.info("Harga Khusus diterapkan");

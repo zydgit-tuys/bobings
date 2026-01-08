@@ -141,6 +141,7 @@ export function useReceivePurchaseLines() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchases', variables.purchaseId] }); // Explicit refresh for Detail Page
+      queryClient.invalidateQueries({ queryKey: ['purchase_receipts', variables.purchaseId] }); // History List
       queryClient.invalidateQueries({ queryKey: ['variants'] });
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
       toast.success('Goods received successfully');

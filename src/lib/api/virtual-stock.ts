@@ -1,4 +1,18 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/types';
+
+type ProductImageRow = Pick<Tables<'product_images'>, 'image_url' | 'is_primary' | 'display_order'>;
+type ProductVariantRow = Pick<
+  Tables<'product_variants'>,
+  'id' | 'product_id' | 'sku_variant' | 'size_value_id' | 'color_value_id' | 'is_active'
+>;
+type VirtualStockProductRow = Pick<
+  Tables<'products'>,
+  'id' | 'sku_master' | 'name' | 'virtual_stock' | 'sort_order' | 'images'
+> & {
+  product_images?: ProductImageRow[] | null;
+  product_variants?: ProductVariantRow[] | null;
+};
 
 export interface VirtualStockProduct {
   id: string;
@@ -21,7 +35,7 @@ export interface VirtualStockVariant {
   color_name?: string;
 }
 
-export async function getVirtualStockProducts() {
+export async function getVirtualStockProducts(): Promise<VirtualStockProduct[]> {
   const { data, error } = await supabase
     .from('products')
     .select(`
@@ -48,15 +62,15 @@ export async function getVirtualStockProducts() {
   if (error) throw error;
 
   // Filter active variants and map images
-  return (data || []).map(product => {
+  return ((data || []) as VirtualStockProductRow[]).map(product => {
     // Map product_images to string array, prioritizing is_primary and display_order
     const pImages = product.product_images || [];
-    const sortedImages = pImages.sort((a: any, b: any) => {
+    const sortedImages = [...pImages].sort((a, b) => {
       if (a.is_primary) return -1;
       if (b.is_primary) return 1;
       return (a.display_order || 0) - (b.display_order || 0);
     });
-    const mappedImages = sortedImages.map((img: any) => img.image_url);
+    const mappedImages = sortedImages.map((img) => img.image_url);
 
     // Fallback to legacy images column if no product_images found
     const finalImages = mappedImages.length > 0 ? mappedImages : (product.images || []);
@@ -64,7 +78,7 @@ export async function getVirtualStockProducts() {
     return {
       ...product,
       images: finalImages,
-      variants: (product.product_variants || []).filter((v: any) => v.is_active)
+      variants: (product.product_variants || []).filter((v) => v.is_active)
     };
   });
 }

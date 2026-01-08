@@ -117,6 +117,9 @@ export interface Purchase {
   received_date?: string;
   total_qty: number;
   total_amount: number;
+  total_received?: number;
+  total_paid?: number;
+  total_returned?: number;
   notes?: string;
   created_at: string;
   updated_at: string;

@@ -322,14 +322,20 @@ export default function ProductForm() {
                       name="base_hpp"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-orange-600">Ref. HPP (Default Only)</FormLabel>
+                          <FormLabel className="text-orange-600">Ref. HPP (Deprecated)</FormLabel>
                           <FormControl>
-                            <Input {...field} type="number" min={0} className="border-orange-200" />
+                            <Input
+                              {...field}
+                              type="number"
+                              min={0}
+                              readOnly
+                              className="border-orange-200 bg-muted/50 cursor-not-allowed"
+                            />
                           </FormControl>
                           <FormMessage />
-                          <p className="text-[10px] text-muted-foreground">
-                            *Hanya nilai default untuk varian baru. Tidak mengubah HPP historis.
-                          </p>
+                          <FormDescription className="text-[10px]">
+                            Deprecated: HPP dihitung dari ledger/transaksi. Field ini hanya referensi historis.
+                          </FormDescription>
                         </FormItem>
                       )}
                     />

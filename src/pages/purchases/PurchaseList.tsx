@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Pencil, Trash2, BookOpen, Truck, CreditCard, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -14,6 +15,7 @@ import { ReceiveDialog } from "./ReceiveDialog";
 import { PaymentDialog } from "./PaymentDialog";
 import { ReturnDialog } from "./ReturnDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export default function PurchaseList() {
   const navigate = useNavigate();
@@ -42,7 +44,16 @@ export default function PurchaseList() {
     }
     // Custom mapping for "completed" filter to include received
     if (filterStatus === "completed") {
-      return purchases.filter(p => p.status === 'completed' || p.status === 'received');
+      return purchases.filter(p => p.status === 'completed');
+    }
+    if (filterStatus === "unpaid") {
+      return purchases.filter(p =>
+        (p.status === 'partial' || p.status === 'received') &&
+        (p.total_paid || 0) < ((p.total_amount || 0) - (p.total_returned || 0))
+      );
+    }
+    if (filterStatus === "draft") {
+      return purchases.filter(p => p.status === 'draft' || p.status === 'cancelled');
     }
 
     return purchases.filter(p => p.status === filterStatus);
@@ -71,11 +82,50 @@ export default function PurchaseList() {
       header: "Status",
       render: (item: any) => <StatusBadge status={item.status} />,
     },
-    { key: "total_qty", header: "Qty", hideOnMobile: true },
     {
-      key: "total_amount",
-      header: "Total",
-      render: (item: any) => `Rp ${item.total_amount.toLocaleString('id-ID')}`,
+      key: "total_received",
+      header: "Penerimaan",
+      render: (item: any) => {
+        // Calculate total received QTY from lines, distinct from total_received (money)
+        const totalReceivedQty = item.purchase_order_lines?.reduce((sum: number, line: any) => sum + (line.qty_received || 0), 0) || 0;
+        const pct = item.total_qty > 0 ? (totalReceivedQty / item.total_qty) * 100 : 0;
+
+        return (
+          <div className="flex flex-col gap-1 w-[100px]">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>{totalReceivedQty} / {item.total_qty}</span>
+              <span>{Math.round(pct)}%</span>
+            </div>
+            <Progress value={pct} className="h-1.5" indicatorClassName={pct >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
+          </div>
+        )
+      },
+    },
+    {
+      key: "total_paid",
+      header: "Pembayaran",
+      render: (item: any) => {
+        const netTotal = (item.total_amount || 0) - (item.total_returned || 0);
+        const paid = item.total_paid || 0;
+        const remaining = netTotal - paid;
+        const pct = netTotal > 0 ? (paid / netTotal) * 100 : 0;
+
+        return (
+          <div className="flex flex-col gap-1 w-[120px]">
+            <div className="flex justify-between text-[10px]">
+              <span className={pct >= 100 ? "font-medium text-emerald-600" : "font-medium text-amber-600"}>
+                Rp {paid.toLocaleString('id-ID')}
+              </span>
+              <span className="text-muted-foreground">{Math.round(pct)}%</span>
+            </div>
+            <Progress value={pct} className="h-1.5" indicatorClassName={pct >= 100 ? "bg-emerald-500" : "bg-amber-500"} />
+            <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
+              <span>Netto: Rp {netTotal.toLocaleString('id-ID')}</span>
+              {remaining > 0 && <span className="text-amber-600 font-semibold">Sisa: Rp {remaining.toLocaleString('id-ID')}</span>}
+            </div>
+          </div>
+        )
+      },
     },
     {
       key: "actions",
@@ -148,7 +198,7 @@ export default function PurchaseList() {
                     className="text-slate-600 hover:bg-slate-100"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setJournalPreviewId(item.id);
+                      navigate(`/accounting?tab=journals&ref_id=${item.id}`);
                     }}
                   >
                     <BookOpen className="h-4 w-4" />
@@ -201,6 +251,33 @@ export default function PurchaseList() {
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{purchase.total_qty} item</span>
         <span className="text-sm font-medium">Rp {purchase.total_amount.toLocaleString('id-ID')}</span>
+      </div>
+
+      {/* Progress Bars for Mobile */}
+      <div className="grid grid-cols-2 gap-4 py-2">
+        <div className="space-y-1">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-muted-foreground">Terima</span>
+            <span className="text-[9px] font-medium">
+              {purchase.purchase_order_lines?.reduce((sum: number, line: any) => sum + (line.qty_received || 0), 0) || 0} / {purchase.total_qty}
+            </span>
+          </div>
+          <Progress value={purchase.total_qty > 0 ? ((purchase.purchase_order_lines?.reduce((sum: number, line: any) => sum + (line.qty_received || 0), 0) || 0) / purchase.total_qty) * 100 : 0} className="h-1.5" />
+        </div>
+        <div className="space-y-1">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-muted-foreground">Bayar</span>
+            <span className="text-[9px] font-medium">
+              {Math.round(((purchase.total_amount || 0) - (purchase.total_returned || 0)) > 0 ? ((purchase.total_paid || 0) / ((purchase.total_amount || 0) - (purchase.total_returned || 0))) * 100 : 0)}%
+            </span>
+          </div>
+          <Progress value={((purchase.total_amount || 0) - (purchase.total_returned || 0)) > 0 ? ((purchase.total_paid || 0) / ((purchase.total_amount || 0) - (purchase.total_returned || 0))) * 100 : 0} className="h-1.5" indicatorClassName="bg-amber-500" />
+          {((purchase.total_amount || 0) - (purchase.total_returned || 0) - (purchase.total_paid || 0)) > 0 && (
+            <div className="text-[9px] text-amber-600 font-semibold">
+              Sisa: Rp {((purchase.total_amount || 0) - (purchase.total_returned || 0) - (purchase.total_paid || 0)).toLocaleString('id-ID')}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile Quick Actions */}

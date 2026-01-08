@@ -264,10 +264,11 @@ function CreatePaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         });
     };
 
-    const handleAllocationChange = (orderId: string, amount: number) => {
+    const handleAllocationChange = (orderId: string, amount: number, maxAmount: number) => {
+        const safeAmount = Number.isFinite(amount) ? amount : 0;
         setSelectedOrders(prev => ({
             ...prev,
-            [orderId]: amount,
+            [orderId]: Math.min(Math.max(safeAmount, 0), maxAmount),
         }));
     };
 
@@ -479,7 +480,7 @@ function CreatePaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                                                             <Input
                                                                 type="number"
                                                                 value={selectedOrders[order.id]}
-                                                                onChange={(e) => handleAllocationChange(order.id, Number(e.target.value))}
+                                                                onChange={(e) => handleAllocationChange(order.id, Number(e.target.value), order.outstanding_amount)}
                                                                 max={order.outstanding_amount}
                                                                 min={0}
                                                                 className="w-32"

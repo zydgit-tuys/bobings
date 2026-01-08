@@ -1,5 +1,19 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { SalesOrder, SalesImport, DestyRow, ParseResult, ProcessResult } from '@/types';
+import type { DestyRow, ParseResult, ProcessResult, Tables } from '@/types';
+
+type SalesOrderRow = Tables<'sales_orders'>;
+type OrderItemRow = Tables<'order_items'>;
+type ProductLookup = Pick<Tables<'products'>, 'sku_master' | 'name'>;
+type VariantLookup = Pick<Tables<'product_variants'>, 'id' | 'sku_variant'> & {
+  products: ProductLookup | null;
+};
+type OrderItemWithVariant = OrderItemRow & {
+  product_variants?: (Pick<Tables<'product_variants'>, 'id' | 'sku_variant'> & {
+    products?: Pick<Tables<'products'>, 'name'> | null;
+  }) | null;
+};
+type SalesOrderWithItems = SalesOrderRow & { order_items: OrderItemRow[] };
+type SalesOrderDetail = SalesOrderRow & { order_items: OrderItemWithVariant[] };
 
 // ============================================
 // SALES ORDERS API
@@ -11,7 +25,7 @@ export async function getSalesOrders(filters?: {
   marketplace?: string;
   excludeMarketplace?: string; // Add this
   status?: string;
-}) {
+}): Promise<SalesOrderWithItems[]> {
   let query = supabase
     .from('sales_orders')
     .select(`
@@ -38,7 +52,7 @@ export async function getSalesOrders(filters?: {
 
   const { data, error } = await query;
   if (error) throw error;
-  return data;
+  return data as SalesOrderWithItems[];
 }
 
 export interface CreateSalesOrderInput {
@@ -67,7 +81,7 @@ export interface CreateSalesOrderInput {
   notes?: string;
 }
 
-export async function createSalesOrder(input: CreateSalesOrderInput) {
+export async function createSalesOrder(input: CreateSalesOrderInput): Promise<SalesOrderRow> {
   // Always auto-generate order number via RPC
   const { data: orderNo, error: orderNoError } = await supabase.rpc('generate_sales_order_no');
   if (orderNoError) throw orderNoError;
@@ -111,7 +125,7 @@ export async function createSalesOrder(input: CreateSalesOrderInput) {
     .select('id, sku_variant, products(sku_master, name)')
     .in('id', variantIds);
 
-  const variantMap = new Map(variants?.map(v => [v.id, v]) || []);
+  const variantMap = new Map((variants as VariantLookup[] | null)?.map(v => [v.id, v]) || []);
 
   // Create order items
   const orderItems = input.items.map(item => {
@@ -120,8 +134,8 @@ export async function createSalesOrder(input: CreateSalesOrderInput) {
       order_id: order.id,
       variant_id: item.variant_id,
       sku_variant: variant?.sku_variant || null,
-      sku_master: (variant?.products as any)?.sku_master || null,
-      product_name: (variant?.products as any)?.name || 'Unknown',
+      sku_master: variant?.products?.sku_master || null,
+      product_name: variant?.products?.name || 'Unknown',
       qty: item.qty,
       unit_price: item.unit_price,
       hpp: item.hpp,
@@ -150,7 +164,7 @@ export async function createSalesOrder(input: CreateSalesOrderInput) {
     return updatedOrder;
   }
 
-  return order;
+  return order as SalesOrderRow;
 }
 
 export async function createSalesOrderWithJournal(input: CreateSalesOrderInput) {
@@ -177,7 +191,7 @@ export async function createSalesOrderWithJournal(input: CreateSalesOrderInput) 
   return order;
 }
 
-export async function updateSalesOrder(id: string, input: CreateSalesOrderInput) {
+export async function updateSalesOrder(id: string, input: CreateSalesOrderInput): Promise<SalesOrderRow> {
   // 1. Fetch Existing Order to check previous status
   const { data: oldOrder, error: fetchError } = await supabase
     .from('sales_orders')
@@ -226,7 +240,7 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
     .select('id, sku_variant, products(sku_master, name)')
     .in('id', variantIds);
 
-  const variantMap = new Map(variants?.map(v => [v.id, v]) || []);
+  const variantMap = new Map((variants as VariantLookup[] | null)?.map(v => [v.id, v]) || []);
 
   const orderItems = input.items.map(item => {
     const variant = variantMap.get(item.variant_id);
@@ -234,8 +248,8 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
       order_id: id,
       variant_id: item.variant_id,
       sku_variant: variant?.sku_variant || null,
-      sku_master: (variant?.products as any)?.sku_master || null,
-      product_name: (variant?.products as any)?.name || 'Unknown',
+      sku_master: variant?.products?.sku_master || null,
+      product_name: variant?.products?.name || 'Unknown',
       qty: item.qty,
       unit_price: item.unit_price,
       hpp: item.hpp,
@@ -254,10 +268,10 @@ export async function updateSalesOrder(id: string, input: CreateSalesOrderInput)
   // - Deduct if status -> completed
   // - Restore if status completed -> other
 
-  return order;
+  return order as SalesOrderRow;
 }
 
-export async function updateSalesOrderWithJournal(id: string, input: CreateSalesOrderInput) {
+export async function updateSalesOrderWithJournal(id: string, input: CreateSalesOrderInput): Promise<SalesOrderRow> {
   // Get old status to check for transition
   const { data: oldOrder } = await supabase
     .from('sales_orders')
@@ -309,7 +323,7 @@ export async function updateSalesOrderWithJournal(id: string, input: CreateSales
   return order;
 }
 
-export async function getSalesOrder(id: string) {
+export async function getSalesOrder(id: string): Promise<SalesOrderDetail> {
   const { data, error } = await supabase
     .from('sales_orders')
     .select(`
@@ -323,24 +337,24 @@ export async function getSalesOrder(id: string) {
     .single();
 
   if (error) throw error;
-  return data;
+  return data as SalesOrderDetail;
 }
 
 // ============================================
 // SALES IMPORTS API
 // ============================================
 
-export async function getSalesImports() {
+export async function getSalesImports(): Promise<Tables<'sales_imports'>[]> {
   const { data, error } = await supabase
     .from('sales_imports')
     .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data;
+  return data as Tables<'sales_imports'>[];
 }
 
-export async function getSalesImport(id: string) {
+export async function getSalesImport(id: string): Promise<Tables<'sales_imports'> & { sales_orders: SalesOrderRow[] }> {
   const { data, error } = await supabase
     .from('sales_imports')
     .select(`
@@ -351,7 +365,7 @@ export async function getSalesImport(id: string) {
     .single();
 
   if (error) throw error;
-  return data;
+  return data as Tables<'sales_imports'> & { sales_orders: SalesOrderRow[] };
 }
 
 // ============================================
@@ -400,22 +414,27 @@ function findColumnIndex(headers: string[], possibleNames: string[]): number {
   return -1;
 }
 
-function parseNumeric(value: any): number {
+function parseNumeric(value: unknown): number {
   if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return value;
-  const cleaned = value.toString().replace(/[Rp.,\s]/g, '').trim();
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[Rp.,\s]/g, '').trim();
+    const num = parseFloat(cleaned);
+    return Number.isNaN(num) ? 0 : num;
+  }
+  const cleaned = String(value).replace(/[Rp.,\s]/g, '').trim();
   const num = parseFloat(cleaned);
   return isNaN(num) ? 0 : num;
 }
 
-function parseDate(value: any): string {
+function parseDate(value: unknown): string {
   if (!value) return new Date().toISOString().split('T')[0];
   if (typeof value === 'number') {
     // Excel date to JS date
     const date = new Date((value - 25569) * 86400 * 1000);
     return date.toISOString().split('T')[0];
   }
-  const parsed = new Date(value.toString());
+  const parsed = new Date(String(value));
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0];
   }
@@ -435,7 +454,7 @@ export async function parseDestyFile(file: File): Promise<ParseResult> {
         if (workbook.SheetNames.length === 0) throw new Error('Empty workbook');
 
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
 
         if (rawData.length < 2) throw new Error('No data rows found');
 
@@ -564,9 +583,10 @@ export async function parseDestyFile(file: File): Promise<ParseResult> {
           }
         });
 
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         console.error('Parse error:', err);
-        resolve({ success: false, errors: [err.message] });
+        resolve({ success: false, errors: [errorMessage] });
       }
     };
 

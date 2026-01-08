@@ -62,7 +62,7 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
             chart_of_accounts (code, name)
           )
         `)
-        .eq('reference_type', 'purchase')
+        .in('reference_type', ['purchase', 'purchase_return'])
         .eq('reference_id', purchase.id)
         .order('entry_date', { ascending: true })
         .order('created_at', { ascending: true });
@@ -73,31 +73,37 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
     enabled: !!purchase?.id, // Fetch immediately to calculate remaining amount
   });
 
-  // Calculate remaining amount based on Liability Account (2xxx) balance
+  // Fetch fresh purchase data to ensure we have latest totals
+  const { data: freshPurchase } = useQuery({
+    queryKey: ['purchase', purchase?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('total_amount, total_paid, total_returned, status, suppliers(name)')
+        .eq('id', purchase.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: open && !!purchase?.id,
+  });
+
+  // Use fresh data if available, otherwise fallback to prop
+  const activePurchase = freshPurchase || purchase;
+
+  // Calculate remaining amount based on total PO minus payments and returns
   const remainingAmount = useMemo(() => {
-    if (!purchaseJournals || purchaseJournals.length === 0) return purchase?.total_amount || 0;
+    const total = activePurchase?.total_amount || 0;
+    const paid = activePurchase?.total_paid || 0;
+    const returned = activePurchase?.total_returned || 0;
 
-    let liabilityBalance = 0;
-    let hasLiabilityActivity = false;
+    // Remaining = Original Order - Already Paid - Already Returned
+    return Math.max(0, total - paid - returned);
+  }, [activePurchase]);
 
-    purchaseJournals.forEach((journal: any) => {
-      journal.journal_lines?.forEach((line: any) => {
-        // Check if account is Liability (starts with "2")
-        // This tracks Hutang Supplier balance
-        if (line.chart_of_accounts?.code?.startsWith('2')) {
-          if (line.credit > 0) hasLiabilityActivity = true;
-          liabilityBalance += (line.credit - line.debit);
-        }
-      });
-    });
-
-    // If we have recorded liability (received goods), use the balance
-    // Otherwise (e.g. DP before receive), default to total amount
-    return hasLiabilityActivity ? Math.max(0, liabilityBalance) : (purchase?.total_amount || 0);
-  }, [purchaseJournals, purchase?.total_amount]);
-
-  const diff = amount - (purchase?.total_amount || 0);
-  const paymentStatus = amount === 0 ? 'none' : amount === purchase?.total_amount ? 'full' : amount < purchase?.total_amount ? 'partial' : 'over';
+  const netTotal = (activePurchase?.total_amount || 0) - (activePurchase?.total_returned || 0);
+  const diff = amount - netTotal;
+  const paymentStatus = amount === 0 ? 'none' : Math.abs(amount - remainingAmount) < 0.01 ? 'full' : amount < remainingAmount ? 'partial' : 'over';
   useEffect(() => {
     if (bankAccounts && bankAccounts.length > 0) {
       const defaultBank = bankAccounts.find((b) => b.is_default);
@@ -109,10 +115,25 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
     }
   }, [bankAccounts]);
 
+  // Auto-fill amount when dialog opens
+  useEffect(() => {
+    if (open) {
+      setAmount(remainingAmount);
+      setShowSuccess(false);
+    }
+  }, [open, remainingAmount]);
+
   const paymentMutation = useMutation({
     mutationFn: async () => {
       const bankId = paymentType === "bank" ? selectedBankId : undefined;
-      return triggerAutoJournalPurchase(purchase.id, 'payment', paymentType, amount, bankId);
+      return triggerAutoJournalPurchase({
+        purchaseId: purchase.id,
+        operationType: 'payment',
+        paymentMethod: paymentType,
+        paymentAmount: amount,
+        bankAccountId: bankId,
+        notes: `Pembayaran via ${paymentType === "cash" ? "Kas" : "Bank"}`
+      });
     },
     onSuccess: (data: any) => {
       const typeLabel = paymentType === "cash" ? "Tunai" : paymentType === "bank" ? "Transfer Bank" : "Hutang";
@@ -120,6 +141,8 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
       toast.success(`Jurnal ${typeLabel} berhasil dibuat - ${purchase.purchase_no}`);
 
       queryClient.invalidateQueries({ queryKey: ["purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases", purchase.id] });
+      queryClient.invalidateQueries({ queryKey: ["purchase_payments", purchase.id] });
       queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
 
       // Show success view with all PO journals
@@ -202,11 +225,20 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
                 <span className="font-medium">{purchase.suppliers?.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Total PO:</span>
-                <span className="font-medium">Rp {purchase.total_amount?.toLocaleString()}</span>
+                <span className="text-muted-foreground">Total PO (Net):</span>
+                <div className="flex flex-col items-end">
+                  <span className="font-medium">Rp {netTotal.toLocaleString()}</span>
+                  {activePurchase?.total_returned > 0 && (
+                    <span className="text-[10px] text-orange-600 font-medium">Incl. Retur Rp {activePurchase.total_returned.toLocaleString()}</span>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">Status Bayar:</span>
+                <span className="text-muted-foreground">Sisa Tagihan:</span>
+                <span className="font-bold text-emerald-600">Rp {remainingAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Status Input:</span>
                 <div className="flex gap-2">
                   {paymentStatus === 'full' && <Badge className="bg-green-500 hover:bg-green-600">Lunas</Badge>}
                   {paymentStatus === 'partial' && <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-200">Cicil / Parsial</Badge>}
@@ -237,17 +269,17 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Pembayaran Parsial</AlertTitle>
                 <AlertDescription className="text-xs">
-                  Rp {amount.toLocaleString()} dari Rp {purchase?.total_amount?.toLocaleString()}
+                  Mencicil Rp {amount.toLocaleString()} dari sisa Rp {remainingAmount.toLocaleString()}
                 </AlertDescription>
               </Alert>
             )}
 
             {paymentStatus === 'over' && (
-              <Alert className="bg-blue-50 border-blue-200 text-blue-900">
-                <Info className="h-4 w-4" />
-                <AlertTitle>Kelebihan Bayar</AlertTitle>
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Pembayaran Melebihi Tagihan</AlertTitle>
                 <AlertDescription className="text-xs">
-                  Kelebihan Rp {(amount - (purchase?.total_amount || 0)).toLocaleString()} akan dicatat sebagai deposit/uang muka.
+                  Jumlah bayar tidak boleh melebihi sisa tagihan (Rp {remainingAmount.toLocaleString()}). Silakan koreksi nominal.
                 </AlertDescription>
               </Alert>
             )}
@@ -361,6 +393,7 @@ export function PaymentDialog({ open, onOpenChange, purchase }: PaymentDialogPro
                 disabled={
                   paymentMutation.isPending ||
                   amount <= 0 ||
+                  amount > remainingAmount ||
                   (paymentType === "bank" && !selectedBankId && bankAccounts && bankAccounts.length > 0)
                 }
               >

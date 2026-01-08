@@ -8,6 +8,7 @@ import {
     setPrimaryImage
 } from '@/lib/api/product-images';
 import { toast } from 'sonner';
+import type { TablesUpdate } from '@/types';
 
 export function useProductImages(productId?: string) {
     return useQuery({
@@ -37,7 +38,8 @@ export function useUpdateProductImage() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) => updateProductImage(id, data),
+        mutationFn: ({ id, data }: { id: string; data: TablesUpdate<'product_images'> }) =>
+            updateProductImage(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['product-images'] });
             queryClient.invalidateQueries({ queryKey: ['products'] });

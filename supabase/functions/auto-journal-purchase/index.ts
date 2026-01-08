@@ -13,12 +13,28 @@ const SETTING_KEYS = {
   ACCOUNT_HUTANG_SUPPLIER: 'account_hutang_supplier',
 };
 
+interface ReceiptLine {
+  purchase_line_id: string;
+  variant_id: string;
+  qty: number;
+  unit_cost: number;
+}
+
 interface PurchaseJournalRequest {
   purchaseId: string;
-  operationType: 'receive' | 'payment';  // Distinguish between goods receipt and payment
-  paymentType?: 'cash' | 'bank';  // Required for 'payment' operation, removed 'hutang'
-  bankAccountId?: string; // Optional: specific bank account ID
-  amount?: number;  // Optional for partial payments
+  operationType: 'receive' | 'payment';
+
+  // For receive operation
+  receiptDate?: string;
+  receiptLines?: ReceiptLine[];
+
+  // For payment operation
+  paymentDate?: string;
+  paymentAmount?: number;
+  paymentMethod?: 'cash' | 'bank';
+  bankAccountId?: string;
+
+  notes?: string;
 }
 
 // Helper function to get account mapping from settings
@@ -66,6 +82,58 @@ async function getBankAccount(supabase: any, bankAccountId?: string): Promise<{ 
   return { accountId: data.account_id, bankName: data.bank_name };
 }
 
+// Generate receipt number
+async function generateReceiptNo(supabase: any): Promise<string> {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+
+  const prefix = `GR-${year}${month}-`;
+
+  const { data } = await supabase
+    .from('purchase_receipts')
+    .select('receipt_no')
+    .like('receipt_no', `${prefix}%`)
+    .order('receipt_no', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let sequence = 1;
+  if (data) {
+    const lastNo = data.receipt_no;
+    const lastSeq = parseInt(lastNo.split('-')[2]);
+    sequence = lastSeq + 1;
+  }
+
+  return `${prefix}${String(sequence).padStart(4, '0')}`;
+}
+
+// Generate payment number
+async function generatePaymentNo(supabase: any): Promise<string> {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+
+  const prefix = `PP-${year}${month}-`;
+
+  const { data } = await supabase
+    .from('purchase_payments')
+    .select('payment_no')
+    .like('payment_no', `${prefix}%`)
+    .order('payment_no', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let sequence = 1;
+  if (data) {
+    const lastNo = data.payment_no;
+    const lastSeq = parseInt(lastNo.split('-')[2]);
+    sequence = lastSeq + 1;
+  }
+
+  return `${prefix}${String(sequence).padStart(4, '0')}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -99,7 +167,18 @@ serve(async (req) => {
       );
     }
 
-    const { purchaseId, operationType, paymentType, bankAccountId, amount } = await req.json() as PurchaseJournalRequest;
+    const requestBody = await req.json() as PurchaseJournalRequest;
+    const {
+      purchaseId,
+      operationType,
+      receiptDate,
+      receiptLines,
+      paymentDate,
+      paymentAmount,
+      paymentMethod,
+      bankAccountId,
+      notes
+    } = requestBody;
 
     if (!purchaseId || !operationType) {
       return new Response(
@@ -108,14 +187,31 @@ serve(async (req) => {
       );
     }
 
-    if (operationType === 'payment' && !paymentType) {
+    // Validate receive operation
+    if (operationType === 'receive' && (!receiptLines || receiptLines.length === 0)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'paymentType required for payment operation' }),
+        JSON.stringify({ success: false, error: 'receiptLines required for receive operation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // 3. V2 MAPPING LOOKUP (Priority)
+    // Validate payment operation
+    if (operationType === 'payment') {
+      if (!paymentMethod) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'paymentMethod required for payment operation' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!paymentAmount || paymentAmount <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'paymentAmount required and must be > 0 for payment operation' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // V2 MAPPING LOOKUP
     const getAccountFromV2 = async (
       eventType: string,
       context: string | null,
@@ -147,15 +243,13 @@ serve(async (req) => {
     ]);
 
     // Resolve Critical Accounts
-    // Inventory (Debit side of confirm_purchase)
     const v2Persediaan = await getAccountFromV2('confirm_purchase', null, 'debit');
     const persediaanAccountId = v2Persediaan || setPersediaanId;
 
-    // AP (Credit side of confirm_purchase)
     const v2Hutang = await getAccountFromV2('confirm_purchase', null, 'credit');
     const hutangAccountId = v2Hutang || setHutangId;
 
-    // Validate required accounts exist (Fail-Fast)
+    // Validate required accounts exist
     if (!persediaanAccountId) {
       console.error('❌ Missing Persediaan Account (V2 or V1)');
       throw new Error('Konfigurasi Akun Persediaan tidak ditemukan (Cek Mapping V2 atau Settings V1)');
@@ -186,41 +280,74 @@ serve(async (req) => {
     const supplier = purchase.suppliers as unknown as { name: string; code: string } | null;
     const supplierName = supplier?.name || 'Unknown Supplier';
 
-    // supplierName declaration removed (it was duplicate)
-
     console.log(`📦 Processing ${operationType} operation for purchase: ${purchase.purchase_no}`);
-
-    // IDEMPOTENCY CHECK (Rule #5)
-    // Check if ALREADY received fully AND no incremental amount is being processed
-    // IF we are processing an incremental amount (amount is set), we bypass this check (Double Journal prevented by incremental amount logic)
-    const isIncremental = amount !== undefined && amount > 0;
-
-    if (!isIncremental && (purchase.status === 'received' || purchase.status === 'completed')) {
-      console.log("⚠️ Purchase already received. Idempotency triggered.");
-      return new Response(
-        JSON.stringify({ success: true, message: 'Already received', journalEntryId: null }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Variables to be set based on operation type
     let journalAmount: number;
     let journalDescription: string;
     let journalLines: any[];
+    let receiptId: string | undefined;
+    let receiptNo: string | undefined;
+    let paymentId: string | undefined;
+    let paymentNo: string | undefined;
 
     if (operationType === 'receive') {
       // ============================================
-      // GOODS RECEIPT: Debit Persediaan, Credit Hutang Supplier
+      // GOODS RECEIPT FLOW
       // ============================================
-      if (!hutangAccountId) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+
+      // STEP 1: Generate receipt number
+      receiptNo = await generateReceiptNo(supabase);
+
+      // STEP 2: Calculate total from lines
+      journalAmount = receiptLines!.reduce((sum, line) =>
+        sum + (line.qty * line.unit_cost), 0
+      );
+
+      // STEP 3: Create receipt record
+      const { data: receipt, error: receiptError } = await supabase
+        .from('purchase_receipts')
+        .insert({
+          receipt_no: receiptNo,
+          purchase_id: purchaseId,
+          receipt_date: receiptDate || new Date().toISOString().split('T')[0],
+          total_amount: journalAmount,
+          notes: notes,
+        })
+        .select()
+        .single();
+
+      if (receiptError) {
+        console.error('❌ Error creating receipt:', receiptError);
+        throw new Error(`Failed to create receipt: ${receiptError.message}`);
       }
 
-      journalAmount = amount || purchase.total_amount; // Use provided partial amount, or full fallback
-      const isPartialReceipt = amount && amount < purchase.total_amount;
+      receiptId = receipt.id;
+      console.log(`✅ Receipt created: ${receiptNo} (Rp ${journalAmount.toLocaleString()})`);
+
+      // STEP 4: Create receipt lines
+      const lines = receiptLines!.map(line => ({
+        receipt_id: receipt.id,
+        purchase_line_id: line.purchase_line_id,
+        variant_id: line.variant_id,
+        received_qty: line.qty,
+        unit_cost: line.unit_cost,
+        subtotal: line.qty * line.unit_cost,
+      }));
+
+      const { error: linesError } = await supabase
+        .from('purchase_receipt_lines')
+        .insert(lines);
+
+      if (linesError) {
+        console.error('❌ Error creating receipt lines:', linesError);
+        throw new Error(`Failed to create receipt lines: ${linesError.message}`);
+      }
+
+      console.log(`✅ Created ${lines.length} receipt lines`);
+
+      // STEP 5: Prepare journal entry
+      const isPartialReceipt = journalAmount < purchase.total_amount;
       journalDescription = `Penerimaan barang dari ${supplierName} - ${purchase.purchase_no} ${isPartialReceipt ? '(Partial)' : ''}`;
 
       journalLines = [
@@ -244,62 +371,71 @@ serve(async (req) => {
 
     } else if (operationType === 'payment') {
       // ============================================
-      // PAYMENT: Debit Hutang Supplier, Credit Kas/Bank
+      // PAYMENT FLOW
       // ============================================
-      if (!hutangAccountId) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Akun Hutang Supplier belum dikonfigurasi di Settings' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+
+      // STEP 1: Generate payment number
+      paymentNo = await generatePaymentNo(supabase);
+
+      journalAmount = paymentAmount!;
+
+      // STEP 2: Create payment record
+      const { data: payment, error: paymentError } = await supabase
+        .from('purchase_payments')
+        .insert({
+          payment_no: paymentNo,
+          purchase_id: purchaseId,
+          payment_date: paymentDate || new Date().toISOString().split('T')[0],
+          payment_amount: journalAmount,
+          payment_method: paymentMethod!,
+          bank_account_id: bankAccountId,
+          notes: notes,
+        })
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error('❌ Error creating payment:', paymentError);
+        throw new Error(`Failed to create payment: ${paymentError.message}`);
       }
 
-      journalAmount = amount || purchase.total_amount;
+      paymentId = payment.id;
+      console.log(`✅ Payment created: ${paymentNo} (Rp ${journalAmount.toLocaleString()})`);
 
-      // Determine credit account (Kas or Bank)
+      // STEP 3: Determine credit account (Kas or Bank)
       let creditAccountId: string;
       let creditAccountName: string;
 
-      if (paymentType === 'cash') {
+      if (paymentMethod === 'cash') {
         if (!kasAccountId) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Akun Kas belum dikonfigurasi di Settings' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          throw new Error('Akun Kas belum dikonfigurasi di Settings');
         }
         creditAccountId = kasAccountId;
         creditAccountName = 'Kas';
-      } else if (paymentType === 'bank') {
-        // Try to get bank account from bank_accounts table first
+      } else if (paymentMethod === 'bank') {
         const bankAccount = await getBankAccount(supabase, bankAccountId);
         if (bankAccount) {
           creditAccountId = bankAccount.accountId;
           creditAccountName = bankAccount.bankName;
         } else {
-          // Fallback to settings if no bank account configured
           const settingsBankId = await getAccountMapping(supabase, 'account_bank');
           if (!settingsBankId) {
-            return new Response(
-              JSON.stringify({ success: false, error: 'Akun Bank belum dikonfigurasi. Silakan tambahkan akun bank di Settings.' }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
+            throw new Error('Akun Bank belum dikonfigurasi. Silakan tambahkan akun bank di Settings.');
           }
           creditAccountId = settingsBankId;
           creditAccountName = 'Bank';
         }
       } else {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Invalid paymentType. Must be "cash" or "bank".' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        throw new Error('Invalid paymentMethod. Must be "cash" or "bank".');
       }
 
-      // Determine if partial or full payment
-      const isPartial = amount && amount < purchase.total_amount;
+      // STEP 4: Prepare journal entry
+      const isPartial = journalAmount < purchase.total_amount;
       const paymentLabel = isPartial
-        ? `Parsial: Rp ${amount!.toLocaleString()} dari Rp ${purchase.total_amount.toLocaleString()}`
+        ? `Parsial: Rp ${journalAmount.toLocaleString()} dari Rp ${purchase.total_amount.toLocaleString()}`
         : `Lunas: Rp ${journalAmount.toLocaleString()}`;
 
-      journalDescription = `Pembayaran ${paymentType === 'cash' ? 'tunai' : 'transfer'} ke ${supplierName} - ${purchase.purchase_no} (${paymentLabel})`;
+      journalDescription = `Pembayaran ${paymentMethod === 'cash' ? 'tunai' : 'transfer'} ke ${supplierName} - ${purchase.purchase_no} (${paymentLabel})`;
 
       journalLines = [
         // Debit: Hutang Supplier (liability decreases)
@@ -319,15 +455,14 @@ serve(async (req) => {
       ];
 
       console.log(`✅ Payment: Debit Hutang Supplier, Credit ${creditAccountName} = Rp ${journalAmount.toLocaleString()} ${isPartial ? '(Partial)' : '(Full)'}`);
-
     } else {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Invalid operationType. Must be "receive" or "payment".' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      throw new Error('Invalid operationType. Must be "receive" or "payment".');
     }
 
-    // Create journal entry
+    // ============================================
+    // CREATE JOURNAL ENTRY
+    // ============================================
+
     const { data: journalEntry, error: entryError } = await supabase
       .from('journal_entries')
       .insert({
@@ -360,49 +495,26 @@ serve(async (req) => {
       throw new Error(`Failed to create journal lines: ${linesError.message}`);
     }
 
+    console.log(`✅ Journal entry created: ${journalEntry.id}`);
+
     // ============================================
-    // CHECK FOR PO COMPLETION
+    // LINK JOURNAL TO RECEIPT/PAYMENT
     // ============================================
-    // If we just made a payment, check if liability is fully paid off
-    if (operationType === 'payment') {
-      // Fetch all journals for this PO to calculate balance
-      const { data: allJournals, error: fetchJwtError } = await supabase
-        .from('journal_entries')
-        .select(`
-          journal_lines (account_id, debit, credit)
-        `)
-        .eq('reference_type', 'purchase')
-        .eq('reference_id', purchaseId);
 
-      if (!fetchJwtError && allJournals) {
-        let liabilityBalance = 0;
-        allJournals.forEach((j: any) => {
-          j.journal_lines?.forEach((l: any) => {
-            if (l.account_id === hutangAccountId) {
-              liabilityBalance += (l.credit - l.debit);
-            }
-          });
-        });
+    if (operationType === 'receive' && receiptId) {
+      await supabase
+        .from('purchase_receipts')
+        .update({ journal_entry_id: journalEntry.id })
+        .eq('id', receiptId);
 
-        // Use a small epsilon for float comparison vs zero
-        const isFullyPaid = liabilityBalance <= 100; // tolerance for small diffs due to rounding
+      console.log(`✅ Linked journal ${journalEntry.id} to receipt ${receiptNo}`);
+    } else if (operationType === 'payment' && paymentId) {
+      await supabase
+        .from('purchase_payments')
+        .update({ journal_entry_id: journalEntry.id })
+        .eq('id', paymentId);
 
-        console.log(`💰 Liability Balance check: Rp ${liabilityBalance.toLocaleString()} -> Fully Paid? ${isFullyPaid}`);
-
-        if (isFullyPaid && (purchase.status === 'received' || purchase.status === 'partial')) {
-          console.log(`✅ PO ${purchase.purchase_no} is fully paid and received. Updating status to 'completed'...`);
-
-          const { error: updateError } = await supabase
-            .from('purchases')
-            .update({ status: 'completed' })
-            .eq('id', purchaseId);
-
-          if (updateError) {
-            console.error('⚠️ Failed to auto-update status to completed:', updateError);
-            // Don't throw here, as the main operation (journal) succeeded
-          }
-        }
-      }
+      console.log(`✅ Linked journal ${journalEntry.id} to payment ${paymentNo}`);
     }
 
     console.log(`🎉 Auto journal completed for purchase ${purchase.purchase_no}`);
@@ -412,7 +524,15 @@ serve(async (req) => {
         success: true,
         journalEntryId: journalEntry.id,
         operationType,
-        paymentType: operationType === 'payment' ? paymentType : null,
+
+        // Receipt info
+        receiptNo: receiptNo,
+        receiptId: receiptId,
+
+        // Payment info
+        paymentNo: paymentNo,
+        paymentId: paymentId,
+
         purchaseNo: purchase.purchase_no,
         amount: journalAmount,
         journalDescription,

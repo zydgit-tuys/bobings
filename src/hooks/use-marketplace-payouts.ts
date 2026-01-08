@@ -1,20 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { Tables } from "@/types";
 
-export interface Payout {
-    id: string;
-    payout_no: string;
-    marketplace: string;
-    start_date: string;
-    end_date: string;
-    total_amount: number;
-    total_orders: number;
-    status: 'draft' | 'confirmed';
-    notes?: string;
-    created_at: string;
-    updated_at: string;
-}
+export type Payout = Tables<'marketplace_payouts'>;
 
 export function usePayouts() {
     return useQuery({
@@ -60,7 +49,7 @@ export function useCreatePayout() {
             queryClient.invalidateQueries({ queryKey: ["sales-orders"] });
             toast.success("Payout Draft Created");
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(error.message);
         },
     });
@@ -90,7 +79,7 @@ export function useConfirmPayout() {
             queryClient.invalidateQueries({ queryKey: ["payouts"] });
             toast.success("Payout Confirmed & Journaled");
         },
-        onError: (error: any) => {
+        onError: (error: Error) => {
             toast.error(error.message);
         },
     });
